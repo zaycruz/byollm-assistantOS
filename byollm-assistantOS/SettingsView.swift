@@ -23,6 +23,11 @@ struct SettingsView: View {
     @State private var isTestingConnection = false
     @FocusState private var isServerFieldFocused: Bool
     
+    // Side panel mode
+    var isInSidePanel: Bool = false
+    var onBack: (() -> Void)?
+    var onDismiss: (() -> Void)?
+    
     enum ConnectionStatus {
         case disconnected
         case connecting
@@ -60,19 +65,40 @@ struct SettingsView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+                .onTapGesture {
+                    isServerFieldFocused = false
+                }
             
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Spacer()
+                    if isInSidePanel {
+                        Button(action: { onBack?() }) {
+                            Image(systemName: "chevron.left")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Color.white.opacity(0.1))
+                                .clipShape(Circle())
+                        }
+                    } else {
+                        Spacer()
+                    }
+                    
                     Text("Settings")
                         .font(.title2)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
+                    
                     Spacer()
-                }
-                .overlay(alignment: .trailing) {
-                    Button(action: { dismiss() }) {
+                    
+                    Button(action: { 
+                        if isInSidePanel {
+                            onDismiss?()
+                        } else {
+                            dismiss()
+                        }
+                    }) {
                         Image(systemName: "xmark")
                             .font(.title3)
                             .foregroundColor(.white)
@@ -154,7 +180,7 @@ struct SettingsView: View {
                                             Spacer()
                                         }
                                         
-                                        TextField("Enter IP address (e.g., 192.168.1.100:8080)", text: $editingServerAddress)
+                                                        TextField("Enter IP address (e.g., 192.168.1.100:8080)", text: $editingServerAddress)
                                             .textFieldStyle(PlainTextFieldStyle())
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 16)
@@ -165,11 +191,24 @@ struct SettingsView: View {
                                             .keyboardType(.URL)
                                             .autocapitalization(.none)
                                             .autocorrectionDisabled()
-                                            .onChange(of: editingServerAddress) { newValue in
+                                            .submitLabel(.done)
+                                            .onSubmit {
+                                                isServerFieldFocused = false
+                                            }
+                                            .onChange(of: editingServerAddress) { oldValue, newValue in
                                                 serverAddress = newValue
                                                 // Reset connection status when address changes
                                                 if connectionStatus == .connected {
                                                     connectionStatus = .disconnected
+                                                }
+                                            }
+                                            .toolbar {
+                                                ToolbarItemGroup(placement: .keyboard) {
+                                                    Spacer()
+                                                    Button("Done") {
+                                                        isServerFieldFocused = false
+                                                    }
+                                                    .foregroundColor(.blue)
                                                 }
                                             }
                                     }

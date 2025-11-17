@@ -10,20 +10,43 @@ A beautiful, modern iOS chat interface for local LLM integration, inspired by Lo
   - Full markdown rendering support (bold, italic, headers, lists, code blocks)
   - Automatically formats LLM responses with proper styling
   - Preserves formatting while maintaining consistent white text color
-- **Welcome Screen**: Introduction screen for first-time users with "Meet Apple Foundation" messaging
-- **Suggestion Chips**: Quick action buttons for common queries (Plan, Tell me, Begin)
+- **Welcome Screen**: Introduction screen with "Meet AssistantOS" messaging and BYOLLM information
 - **Input Controls**: 
   - Text input field with auto-focus option
   - Plus button for attachments
   - Lightbulb for suggestions
   - Voice input button
   - Send button when typing
+  - Loading indicator during AI response generation
+
+### Side Panel (Chat History)
+- **Slide-in Navigation**:
+  - Slides in from left edge (85% width for chat history)
+  - Smooth 0.3s animation
+  - Dimmed background overlay for focus
+  - Tap background or X button to dismiss
+- **Chat History View**:
+  - Shows all previous conversations
+  - Each entry displays:
+    - Relative timestamp (e.g., "2 hours ago")
+    - Message count indicator
+    - Preview of first message (truncated to 2 lines)
+  - Empty state with helpful message for new users
+  - Scrollable list of conversation history
+- **Settings Navigation**:
+  - Settings button pinned to bottom of side panel
+  - Seamless horizontal transition to settings
+  - **Settings expands to full screen width** for better usability
+  - Back button returns to chat history (no panel dismiss)
+  - Maintains panel state throughout navigation
 
 ### Settings View
 - **Siri Shortcuts Integration**: Card promoting voice assistant integration
 - **Server Connection Section**:
   - Server address input field for connecting to your LLM server
   - Supports IP addresses with ports (e.g., 192.168.1.100:8080)
+  - **Persistent storage**: IP address is automatically saved and restored on app restart
+  - Keyboard dismissal: Tap outside field, press "Done" button, or hit return
   - Real-time connection testing with "Test" button
   - Visual connection status indicator with color-coded states:
     - Gray: Not Connected
@@ -96,15 +119,15 @@ A beautiful, modern iOS chat interface for local LLM integration, inspired by Lo
 - **Modern Design**: Dark theme with semi-transparent cards and SF Symbols icons
 
 ### Top Bar
-- Settings button (gear icon)
+- **Side Panel button** (hamburger menu icon) - Opens chat history panel
 - New conversation button (message icon)
 - **Dynamic Model Selector**:
-  - Displays currently selected model (defaults to "qwen2.5:latest")
-  - Tap to open model picker sheet
+  - Displays currently selected model (simplified name: "qwen2.5")
+  - Native iOS Menu dropdown with checkmarks
+  - Instantly shows available models from server
   - Automatically loads available models from connected server via `/v1/models` API
-  - Falls back to default if server is not configured
+  - Falls back to default "qwen2.5:latest" if server is not configured
   - Selection persists across app usage
-  - Uses native iOS sheet presentation with search-friendly list
 - New chat button (square and pencil icon)
 
 ### Conversation Management
