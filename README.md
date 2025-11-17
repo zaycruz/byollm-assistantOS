@@ -7,6 +7,9 @@ A beautiful, modern iOS chat interface for local LLM integration, inspired by Lo
 ### Chat Interface
 - **Gradient Background**: Beautiful teal-to-blue gradient matching the reference design
 - **Message Bubbles**: Clean, rounded message bubbles for user and AI responses
+  - Full markdown rendering support (bold, italic, headers, lists, code blocks)
+  - Automatically formats LLM responses with proper styling
+  - Preserves formatting while maintaining consistent white text color
 - **Welcome Screen**: Introduction screen for first-time users with "Meet Apple Foundation" messaging
 - **Suggestion Chips**: Quick action buttons for common queries (Plan, Tell me, Begin)
 - **Input Controls**: 
@@ -95,14 +98,25 @@ A beautiful, modern iOS chat interface for local LLM integration, inspired by Lo
 ### Top Bar
 - Settings button (gear icon)
 - New conversation button (message icon)
-- Model selector (currently shows "SmolLM 3 3B")
+- **Dynamic Model Selector**:
+  - Displays currently selected model (defaults to "qwen2.5:latest")
+  - Tap to open model picker sheet
+  - Automatically loads available models from connected server via `/v1/models` API
+  - Falls back to default if server is not configured
+  - Selection persists across app usage
+  - Uses native iOS sheet presentation with search-friendly list
 - New chat button (square and pencil icon)
 
 ### Conversation Management
 - Create new conversations
 - Message history tracking
 - Delete conversation history with confirmation
-- Simulated AI responses (ready for LLM integration)
+- **Real LLM Integration** via OpenAI-compatible API:
+  - Connects to BYOLLM server backend
+  - Supports custom system prompts
+  - Automatic error handling with user-friendly messages
+  - Loading indicators during API calls
+  - Temperature and max_tokens configuration
 
 ## Architecture
 
@@ -131,11 +145,16 @@ The app is structured with clean separation of concerns:
    - Toggle controls
    - Delete confirmation alert
 
-4. **NetworkManager.swift** - Network utilities
-   - Async/await connection testing
-   - URL validation
-   - HTTP health check implementation
-   - Error handling
+4. **NetworkManager.swift** - Complete API integration
+   - **Health Check**: `/health` endpoint for server status
+   - **Models List**: `/v1/models` to get available models
+   - **Chat Completions**: `/v1/chat/completions` for LLM responses
+   - OpenAI-compatible API structure
+   - Proper request/response models with Codable
+   - System prompt integration
+   - Temperature and max_tokens configuration
+   - Async/await with proper error handling
+   - 60-second timeout for chat requests
 
 5. **PersonalizationView.swift** - Comprehensive AI personalization with tabs
    - **About Me Tab**:
@@ -172,16 +191,60 @@ The app is structured with clean separation of concerns:
 - **Dark Theme**: Optimized for OLED displays
 - **Smooth Animations**: Native SwiftUI transitions
 
-## Next Steps for Integration
+## Server Setup & Connection
 
-To connect to a real LLM:
+### Prerequisites
 
-1. Replace the simulated response in `ConversationManager.sendMessage()` with actual LLM API calls
-2. Add model selection functionality in the top bar
-3. Implement the "Manage models" settings screen
-4. Add streaming response support
-5. Implement conversation persistence
+1. **Start the BYOLLM Server**:
+   ```bash
+   cd path/to/byollm-server
+   uv run uvicorn server.main:app --reload --host 0.0.0.0 --port 8080
+   ```
+
+2. **Start Ollama** (if using Ollama backend):
+   ```bash
+   ollama serve
+   ```
+
+3. **Pull a Model**:
+   ```bash
+   ollama pull llama3
+   # or any other model like: qwen2.5, phi3.5, mistral, etc.
+   ```
+
+### Connecting the App
+
+1. Open the app and tap **Settings** (gear icon)
+2. In **Server Connection** section:
+   - Enter your server address (e.g., `localhost:8080` or `192.168.1.100:8080`)
+   - Tap **Test** to verify connection
+   - Green checkmark = connected! ✅
+3. Go to **Personalization** to set your system prompt
+4. Start chatting!
+
+### API Endpoints Used
+
+- **Health Check**: `GET /health` - Verifies server is running
+- **List Models**: `GET /v1/models` - Gets available models from backend
+- **Chat**: `POST /v1/chat/completions` - Sends messages and receives responses
+
+### Supported Parameters
+
+- `model`: Model to use (e.g., "llama3", "qwen2.5")
+- `messages`: Array of chat messages with role and content
+- `temperature`: 0.0-2.0 (default 0.7) - Controls randomness
+- `max_tokens`: Minimum 1 (default 1024) - Max response length
+- `stream`: Boolean (default false) - Streaming not yet implemented in UI
+
+## Next Steps
+
+1. ✅ ~~Connect to real LLM server~~ **DONE!**
+2. ✅ ~~Add model selection functionality in the top bar~~ **DONE!**
+3. ✅ ~~Implement dynamic model loading from `/v1/models` endpoint~~ **DONE!**
+4. Add streaming response support with real-time text display
+5. Implement conversation persistence to local storage
 6. Add Siri Shortcuts functionality
+7. Support for image/multimodal inputs
 
 ## Requirements
 

@@ -30,8 +30,10 @@ struct Conversation: Identifiable {
 class ConversationManager: ObservableObject {
     @Published var currentConversation: Conversation
     @Published var conversationHistory: [Conversation] = []
+    @Published var isLoading: Bool = false
     var serverAddress: String?
     var systemPrompt: String?
+    var selectedModel: String = "qwen2.5:latest"
     
     init() {
         self.currentConversation = Conversation(messages: [], createdAt: Date())
@@ -41,17 +43,69 @@ class ConversationManager: ObservableObject {
         let userMessage = Message(content: content, isUser: true, timestamp: Date())
         currentConversation.messages.append(userMessage)
         
-        // TODO: Replace with actual API call to serverAddress when configured
-        // For now, simulate AI response
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            let aiResponse = Message(
-                content: self.serverAddress?.isEmpty ?? true 
-                    ? "Please configure your server address in Settings to connect to your LLM."
-                    : "This is a simulated response. API integration with \(self.serverAddress ?? "") coming soon.",
+        // Check if server is configured
+        guard let serverAddress = serverAddress, !serverAddress.isEmpty else {
+            let errorMessage = Message(
+                content: "⚠️ Please configure your server address in Settings → Server Connection to start chatting with your LLM.",
                 isUser: false,
                 timestamp: Date()
             )
-            self.currentConversation.messages.append(aiResponse)
+            currentConversation.messages.append(errorMessage)
+            return
+        }
+        
+        isLoading = true
+        
+        Task {
+            do {
+                // Convert conversation messages to API format
+                let apiMessages = currentConversation.messages.map { message in
+                    ChatMessage(
+                        role: message.isUser ? "user" : "assistant",
+                        content: message.content
+                    )
+                }
+                
+                // Send to server
+                let response = try await NetworkManager.shared.sendChatMessage(
+                    to: serverAddress,
+                    model: selectedModel,
+                    messages: apiMessages,
+                    systemPrompt: systemPrompt,
+                    temperature: 0.7,
+                    maxTokens: 1024
+                )
+                
+                await MainActor.run {
+                    let aiResponse = Message(
+                        content: response,
+                        isUser: false,
+                        timestamp: Date()
+                    )
+                    self.currentConversation.messages.append(aiResponse)
+                    self.isLoading = false
+                }
+            } catch let error as NetworkManager.NetworkError {
+                await MainActor.run {
+                    let errorMessage = Message(
+                        content: "❌ Error: \(error.localizedDescription ?? "Unknown error")\n\nPlease check your server connection and try again.",
+                        isUser: false,
+                        timestamp: Date()
+                    )
+                    self.currentConversation.messages.append(errorMessage)
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    let errorMessage = Message(
+                        content: "❌ Unexpected error: \(error.localizedDescription)\n\nPlease try again.",
+                        isUser: false,
+                        timestamp: Date()
+                    )
+                    self.currentConversation.messages.append(errorMessage)
+                    self.isLoading = false
+                }
+            }
         }
     }
     

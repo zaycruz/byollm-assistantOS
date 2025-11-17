@@ -16,7 +16,9 @@ struct ChatView: View {
     @State private var systemPrompt = ""
     @State private var selectedTheme: AppTheme = .ocean
     @State private var selectedFontStyle: FontStyle = .system
-    @State private var selectedModel = "SmolLM 3 3B"
+    @State private var selectedModel = "qwen2.5:latest"
+    @State private var availableModels: [String] = ["qwen2.5:latest"]
+    @State private var showingModelPicker = false
     @FocusState private var isInputFocused: Bool
     
     enum AppTheme {
@@ -97,13 +99,13 @@ struct ChatView: View {
                     Spacer()
                     
                     // Model Selector
-                    Button(action: {}) {
+                    Button(action: { showingModelPicker = true }) {
                         HStack(spacing: 6) {
                             Text(selectedModel)
                                 .font(.body)
                                 .fontWeight(.medium)
                                 .foregroundColor(.white)
-                            Image(systemName: "chevron.right")
+                            Image(systemName: "chevron.down")
                                 .font(.caption)
                                 .foregroundColor(.white.opacity(0.7))
                         }
@@ -178,8 +180,13 @@ struct ChatView: View {
                                 .onSubmit {
                                     sendMessage()
                                 }
+                                .disabled(conversationManager.isLoading)
                             
-                            if !inputText.isEmpty {
+                            if conversationManager.isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.8)
+                            } else if !inputText.isEmpty {
                                 Button(action: { sendMessage() }) {
                                     Image(systemName: "arrow.up.circle.fill")
                                         .font(.title2)
@@ -216,18 +223,32 @@ struct ChatView: View {
                 selectedFontStyle: $selectedFontStyle
             )
         }
+        .sheet(isPresented: $showingModelPicker) {
+            ModelPickerSheet(
+                availableModels: availableModels,
+                selectedModel: $selectedModel,
+                isPresented: $showingModelPicker
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
         .onAppear {
             if showKeyboardOnLaunch {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     isInputFocused = true
                 }
             }
+            loadModelsFromServer()
         }
         .onChange(of: serverAddress) { newValue in
             conversationManager.serverAddress = newValue
+            loadModelsFromServer()
         }
         .onChange(of: systemPrompt) { newValue in
             conversationManager.systemPrompt = newValue
+        }
+        .onChange(of: selectedModel) { newValue in
+            conversationManager.selectedModel = newValue
         }
     }
     
@@ -235,6 +256,29 @@ struct ChatView: View {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         conversationManager.sendMessage(inputText)
         inputText = ""
+    }
+    
+    private func loadModelsFromServer() {
+        guard !serverAddress.isEmpty else { return }
+        
+        Task {
+            do {
+                let models = try await NetworkManager.shared.getModels(from: serverAddress)
+                
+                await MainActor.run {
+                    if !models.isEmpty {
+                        self.availableModels = models
+                        // If the current selected model is not in the list, select the first one
+                        if !models.contains(selectedModel) {
+                            self.selectedModel = models.first ?? "qwen2.5:latest"
+                        }
+                    }
+                }
+            } catch {
+                // Silently fail - keep default models
+                print("Failed to load models from server: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
@@ -302,22 +346,45 @@ struct MessageBubble: View {
                 Spacer()
             }
             
-            Text(message.content)
-                .font(fontStyle.apply(size: 17, weight: .regular))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    message.isUser
-                        ? Color.white.opacity(0.2)
-                        : Color.white.opacity(0.1)
-                )
-                .cornerRadius(20)
-                .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 0) {
+                Text(formattedContent)
+                    .font(fontStyle.apply(size: 17, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(message.isUser ? .trailing : .leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                message.isUser
+                    ? Color.white.opacity(0.2)
+                    : Color.white.opacity(0.1)
+            )
+            .cornerRadius(20)
+            .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
             
             if !message.isUser {
                 Spacer()
             }
+        }
+    }
+    
+    private var formattedContent: AttributedString {
+        do {
+            // Try to parse as full markdown (including headers, lists, code blocks)
+            var attributed = try AttributedString(markdown: message.content)
+            
+            // Apply white color to all text
+            for run in attributed.runs {
+                let range = run.range
+                attributed[range].foregroundColor = .white
+            }
+            
+            return attributed
+        } catch {
+            // If markdown parsing fails, return plain text
+            var attributed = AttributedString(message.content)
+            attributed.foregroundColor = .white
+            return attributed
         }
     }
 }
@@ -339,6 +406,61 @@ struct SuggestionChip: View {
         .padding(.vertical, 16)
         .background(Color.white.opacity(0.15))
         .cornerRadius(16)
+    }
+}
+
+struct ModelPickerSheet: View {
+    let availableModels: [String]
+    @Binding var selectedModel: String
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(UIColor.systemBackground).ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(availableModels, id: \.self) { model in
+                            Button(action: {
+                                selectedModel = model
+                                isPresented = false
+                            }) {
+                                HStack(spacing: 16) {
+                                    Image(systemName: "cpu")
+                                        .font(.title3)
+                                        .foregroundColor(.primary)
+                                        .frame(width: 30)
+                                    
+                                    Text(model)
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    if selectedModel == model {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.title3)
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                .contentShape(Rectangle())
+                            }
+                            
+                            if model != availableModels.last {
+                                Divider()
+                                    .padding(.leading, 66)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .navigationTitle("Select Model")
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }
 
