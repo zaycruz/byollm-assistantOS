@@ -1,0 +1,86 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a3e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f2557;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="brainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7b2cbf;stop-opacity:1" />
+    </linearGradient>
+    
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="512" cy="512" r="512" fill="url(#bgGradient)"/>
+  
+  <!-- Neural network brain -->
+  <g transform="translate(512, 512)">
+    <!-- Central processor/chip -->
+    <rect x="-60" y="-60" width="120" height="120" rx="10" fill="none" stroke="url(#brainGradient)" stroke-width="4" filter="url(#glow)"/>
+    
+    <!-- Neural nodes (circles) -->
+    <!-- Top layer -->
+    <circle cx="-180" cy="-150" r="20" fill="url(#brainGradient)" filter="url(#glow)"/>
+    <circle cx="0" cy="-180" r="20" fill="url(#brainGradient)" filter="url(#glow)"/>
+    <circle cx="180" cy="-150" r="20" fill="url(#brainGradient)" filter="url(#glow)"/>
+    
+    <!-- Middle layer -->
+    <circle cx="-220" cy="0" r="18" fill="url(#brainGradient)" filter="url(#glow)"/>
+    <circle cx="220" cy="0" r="18" fill="url(#brainGradient)" filter="url(#glow)"/>
+    
+    <!-- Bottom layer -->
+    <circle cx="-180" cy="150" r="20" fill="url(#brainGradient)" filter="url(#glow)"/>
+    <circle cx="0" cy="180" r="20" fill="url(#brainGradient)" filter="url(#glow)"/>
+    <circle cx="180" cy="150" r="20" fill="url(#brainGradient)" filter="url(#glow)"/>
+    
+    <!-- Outer nodes -->
+    <circle cx="-260" cy="-80" r="15" fill="url(#brainGradient)" opacity="0.8"/>
+    <circle cx="-260" cy="80" r="15" fill="url(#brainGradient)" opacity="0.8"/>
+    <circle cx="260" cy="-80" r="15" fill="url(#brainGradient)" opacity="0.8"/>
+    <circle cx="260" cy="80" r="15" fill="url(#brainGradient)" opacity="0.8"/>
+    
+    <!-- Connection lines -->
+    <line x1="-180" y1="-150" x2="-60" y2="-60" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    <line x1="0" y1="-180" x2="0" y2="-60" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    <line x1="180" y1="-150" x2="60" y2="-60" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    
+    <line x1="-220" y1="0" x2="-60" y2="0" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    <line x1="220" y1="0" x2="60" y2="0" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    
+    <line x1="-180" y1="150" x2="-60" y2="60" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    <line x1="0" y1="180" x2="0" y2="60" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    <line x1="180" y1="150" x2="60" y2="60" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    
+    <!-- Outer connections -->
+    <line x1="-260" y1="-80" x2="-220" y2="0" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    <line x1="-260" y1="80" x2="-220" y2="0" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    <line x1="260" y1="-80" x2="220" y2="0" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    <line x1="260" y1="80" x2="220" y2="0" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    
+    <line x1="-260" y1="-80" x2="-180" y2="-150" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    <line x1="-260" y1="80" x2="-180" y2="150" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    <line x1="260" y1="-80" x2="180" y2="-150" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    <line x1="260" y1="80" x2="180" y2="150" stroke="#00d4ff" stroke-width="2" opacity="0.4"/>
+    
+    <!-- Pulse circles in center -->
+    <circle cx="0" cy="0" r="25" fill="none" stroke="#00d4ff" stroke-width="2" opacity="0.3"/>
+    <circle cx="0" cy="0" r="15" fill="none" stroke="#7b2cbf" stroke-width="2" opacity="0.5"/>
+  </g>
+  
+  <!-- Subtle circuit traces in corners -->
+  <path d="M 100 100 L 150 100 L 150 150" stroke="#00d4ff" stroke-width="2" opacity="0.2" fill="none"/>
+  <path d="M 924 100 L 874 100 L 874 150" stroke="#00d4ff" stroke-width="2" opacity="0.2" fill="none"/>
+  <path d="M 100 924 L 150 924 L 150 874" stroke="#00d4ff" stroke-width="2" opacity="0.2" fill="none"/>
+  <path d="M 924 924 L 874 924 L 874 874" stroke="#00d4ff" stroke-width="2" opacity="0.2" fill="none"/>
+</svg>
+

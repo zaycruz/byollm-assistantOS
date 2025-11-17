@@ -7,39 +7,138 @@
 
 import Foundation
 
+// MARK: - API Models
+struct ChatMessage: Codable {
+    let role: String
+    let content: String
+}
+
+struct ChatRequest: Codable {
+    let model: String
+    let messages: [ChatMessage]
+    let temperature: Double?
+    let maxTokens: Int?
+    let stream: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case model, messages, temperature, stream
+        case maxTokens = "max_tokens"
+    }
+}
+
+struct ChatResponse: Codable {
+    let id: String
+    let object: String
+    let model: String
+    let choices: [Choice]
+    let usage: Usage?
+    
+    struct Choice: Codable {
+        let index: Int
+        let message: ChatMessage
+        let finishReason: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case index, message
+            case finishReason = "finish_reason"
+        }
+    }
+    
+    struct Usage: Codable {
+        let promptTokens: Int?
+        let completionTokens: Int?
+        let totalTokens: Int?
+        
+        enum CodingKeys: String, CodingKey {
+            case promptTokens = "prompt_tokens"
+            case completionTokens = "completion_tokens"
+            case totalTokens = "total_tokens"
+        }
+    }
+}
+
+struct ChatStreamResponse: Codable {
+    let id: String
+    let object: String
+    let model: String
+    let choices: [StreamChoice]
+    
+    struct StreamChoice: Codable {
+        let index: Int
+        let delta: Delta
+        let finishReason: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case index, delta
+            case finishReason = "finish_reason"
+        }
+    }
+    
+    struct Delta: Codable {
+        let role: String?
+        let content: String?
+    }
+}
+
+struct ModelsResponse: Codable {
+    let object: String
+    let data: [ModelInfo]
+    
+    struct ModelInfo: Codable {
+        let id: String
+        let object: String
+        let created: Int?
+        let ownedBy: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case id, object, created
+            case ownedBy = "owned_by"
+        }
+    }
+}
+
+struct HealthResponse: Codable {
+    let status: String
+    let backend: String?
+    let version: String?
+}
+
+// MARK: - Network Manager
 class NetworkManager {
     static let shared = NetworkManager()
     
     private init() {}
     
+    // Test connection using health endpoint
     func testConnection(to serverAddress: String) async throws -> Bool {
-        // Validate URL format
         guard !serverAddress.isEmpty else {
             throw NetworkError.invalidURL
         }
         
-        // Add http:// if not present
         var urlString = serverAddress
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
             urlString = "http://\(urlString)"
         }
         
-        guard let url = URL(string: urlString) else {
+        guard let url = URL(string: "\(urlString)/health") else {
             throw NetworkError.invalidURL
         }
         
-        // Create a simple health check request
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 5.0
         
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
-                // Consider 200-299 and 404 as "server is responding"
-                // 404 is acceptable because it means the server exists, just wrong endpoint
-                return (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 404
+                if (200...299).contains(httpResponse.statusCode) {
+                    // Try to decode health response
+                    if let healthResponse = try? JSONDecoder().decode(HealthResponse.self, from: data) {
+                        return healthResponse.status == "healthy"
+                    }
+                    return true
+                }
             }
             
             return false
@@ -48,9 +147,181 @@ class NetworkManager {
         }
     }
     
+    // Get available models
+    func getModels(from serverAddress: String) async throws -> [String] {
+        var urlString = serverAddress
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://\(urlString)"
+        }
+        
+        guard let url = URL(string: "\(urlString)/v1/models") else {
+            throw NetworkError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10.0
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(ModelsResponse.self, from: data)
+        
+        return response.data.map { $0.id }
+    }
+    
+    // Send chat message
+    func sendChatMessage(
+        to serverAddress: String,
+        model: String,
+        messages: [ChatMessage],
+        systemPrompt: String? = nil,
+        temperature: Double = 0.7,
+        maxTokens: Int = 1024
+    ) async throws -> String {
+        var urlString = serverAddress
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://\(urlString)"
+        }
+        
+        guard let url = URL(string: "\(urlString)/v1/chat/completions") else {
+            throw NetworkError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 60.0
+        
+        // Build messages array with optional system prompt
+        var allMessages: [ChatMessage] = []
+        if let systemPrompt = systemPrompt, !systemPrompt.isEmpty {
+            allMessages.append(ChatMessage(role: "system", content: systemPrompt))
+        }
+        allMessages.append(contentsOf: messages)
+        
+        let chatRequest = ChatRequest(
+            model: model,
+            messages: allMessages,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            stream: false
+        )
+        
+        request.httpBody = try JSONEncoder().encode(chatRequest)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+        }
+        
+        let chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
+        
+        guard let content = chatResponse.choices.first?.message.content else {
+            throw NetworkError.noContent
+        }
+        
+        return content
+    }
+    
+    // Send chat message with streaming
+    func sendChatMessageStreaming(
+        to serverAddress: String,
+        model: String,
+        messages: [ChatMessage],
+        systemPrompt: String? = nil,
+        temperature: Double = 0.7,
+        maxTokens: Int = 1024,
+        onChunk: @escaping (String) -> Void
+    ) async throws {
+        var urlString = serverAddress
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://\(urlString)"
+        }
+        
+        guard let url = URL(string: "\(urlString)/v1/chat/completions") else {
+            throw NetworkError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120.0
+        
+        // Build messages array with optional system prompt
+        var allMessages: [ChatMessage] = []
+        if let systemPrompt = systemPrompt, !systemPrompt.isEmpty {
+            allMessages.append(ChatMessage(role: "system", content: systemPrompt))
+        }
+        allMessages.append(contentsOf: messages)
+        
+        let chatRequest = ChatRequest(
+            model: model,
+            messages: allMessages,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            stream: true
+        )
+        
+        request.httpBody = try JSONEncoder().encode(chatRequest)
+        
+        let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+        }
+        
+        var buffer = ""
+        
+        for try await byte in asyncBytes {
+            buffer.append(Character(UnicodeScalar(byte)))
+            
+            // Process complete lines
+            while let newlineIndex = buffer.firstIndex(of: "\n") {
+                let line = String(buffer[..<newlineIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+                buffer.removeSubrange(...newlineIndex)
+                
+                // Skip empty lines
+                guard !line.isEmpty else { continue }
+                
+                // Skip "data: [DONE]" marker
+                if line == "data: [DONE]" {
+                    continue
+                }
+                
+                // Parse SSE format
+                if line.hasPrefix("data: ") {
+                    let jsonString = String(line.dropFirst(6))
+                    
+                    if let jsonData = jsonString.data(using: .utf8) {
+                        do {
+                            let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
+                            if let content = streamResponse.choices.first?.delta.content {
+                                onChunk(content)
+                            }
+                        } catch {
+                            // Skip malformed JSON chunks
+                            print("Failed to parse chunk: \(error)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     enum NetworkError: LocalizedError {
         case invalidURL
         case connectionFailed(String)
+        case invalidResponse
+        case serverError(statusCode: Int)
+        case noContent
         
         var errorDescription: String? {
             switch self {
@@ -58,6 +329,12 @@ class NetworkManager {
                 return "Invalid server address format"
             case .connectionFailed(let message):
                 return "Connection failed: \(message)"
+            case .invalidResponse:
+                return "Invalid response from server"
+            case .serverError(let statusCode):
+                return "Server error (status code: \(statusCode))"
+            case .noContent:
+                return "No content received from server"
             }
         }
     }

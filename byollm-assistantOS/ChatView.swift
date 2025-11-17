@@ -10,13 +10,16 @@ import SwiftUI
 struct ChatView: View {
     @StateObject private var conversationManager = ConversationManager()
     @State private var inputText = ""
+    @State private var showSidePanel = false
     @State private var showSettings = false
+    @State private var sidePanelView: SidePanelContentView = .chatHistory
     @State private var showKeyboardOnLaunch = true
     @State private var serverAddress = ""
     @State private var systemPrompt = ""
     @State private var selectedTheme: AppTheme = .ocean
     @State private var selectedFontStyle: FontStyle = .system
-    @State private var selectedModel = "SmolLM 3 3B"
+    @State private var selectedModel = "qwen2.5:latest"
+    @State private var availableModels: [String] = ["qwen2.5:latest"]
     @FocusState private var isInputFocused: Bool
     
     enum AppTheme {
@@ -62,48 +65,73 @@ struct ChatView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Gradient Background (Dynamic Theme)
-            LinearGradient(
-                colors: selectedTheme.colors,
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                // Main Content
+                ZStack {
+                    // Gradient Background (Dynamic Theme)
+                    LinearGradient(
+                        colors: selectedTheme.colors,
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        // Dismiss keyboard when tapping outside
+                        isInputFocused = false
+                    }
+                    
+                    VStack(spacing: 0) {
                 // Top Bar
-                HStack(spacing: 12) {
-                    // Settings Button
-                    Button(action: { showSettings = true }) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Color.white.opacity(0.15))
-                            .clipShape(Circle())
+                ZStack {
+                    HStack {
+                        // Side Panel Button (Chat History) - Left
+                        Button(action: { 
+                            sidePanelView = .chatHistory
+                            showSidePanel = true
+                        }) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .frame(width: 50, height: 50)
+                                .background(Color.white.opacity(0.15))
+                                .clipShape(Circle())
+                        }
+                        
+                        Spacer()
+                        
+                        // New Chat Icon Button - Right
+                        Button(action: { conversationManager.newConversation() }) {
+                            Image(systemName: "square.and.pencil")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .frame(width: 50, height: 50)
+                                .background(Color.white.opacity(0.15))
+                                .clipShape(Circle())
+                        }
                     }
                     
-                    // New Chat Button
-                    Button(action: { conversationManager.newConversation() }) {
-                        Image(systemName: "message")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Color.white.opacity(0.15))
-                            .clipShape(Circle())
-                    }
-                    
-                    Spacer()
-                    
-                    // Model Selector
-                    Button(action: {}) {
+                    // Model Selector - Centered (aligned with Dynamic Island)
+                    Menu {
+                        ForEach(availableModels, id: \.self) { model in
+                            Button(action: {
+                                selectedModel = model
+                            }) {
+                                HStack {
+                                    Text(formatModelName(model))
+                                    if selectedModel == model {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
                         HStack(spacing: 6) {
-                            Text(selectedModel)
+                            Text(formatModelName(selectedModel))
                                 .font(.body)
                                 .fontWeight(.medium)
                                 .foregroundColor(.white)
-                            Image(systemName: "chevron.right")
+                            Image(systemName: "chevron.down")
                                 .font(.caption)
                                 .foregroundColor(.white.opacity(0.7))
                         }
@@ -112,57 +140,24 @@ struct ChatView: View {
                         .background(Color.white.opacity(0.15))
                         .cornerRadius(25)
                     }
-                    
-                    Spacer()
-                    
-                    // New Chat Icon Button (right side)
-                    Button(action: { conversationManager.newConversation() }) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Color.white.opacity(0.15))
-                            .clipShape(Circle())
-                    }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 60)
+                .padding(.top, 8)
                 .padding(.bottom, 20)
                 
                 // Messages or Welcome Screen
                 if conversationManager.currentConversation.messages.isEmpty {
                     WelcomeView(fontStyle: selectedFontStyle)
                 } else {
-                    MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle)
+                    MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isInputFocused: $isInputFocused)
                 }
                 
                 // Input Area
                 VStack(spacing: 12) {
-                    // Suggestion Chips (only when no messages)
-                    if conversationManager.currentConversation.messages.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                SuggestionChip(title: "Plan", subtitle: "a trip to Paris")
-                                SuggestionChip(title: "Tell me", subtitle: "something fascinating")
-                                SuggestionChip(title: "Begin", subtitle: "meditation")
-                            }
-                            .padding(.horizontal, 20)
-                        }
-                    }
-                    
                     // Input Field
                     HStack(spacing: 12) {
                         Button(action: {}) {
                             Image(systemName: "plus")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.15))
-                                .clipShape(Circle())
-                        }
-                        
-                        Button(action: {}) {
-                            Image(systemName: "lightbulb")
                                 .font(.title2)
                                 .foregroundColor(.white)
                                 .frame(width: 44, height: 44)
@@ -178,8 +173,13 @@ struct ChatView: View {
                                 .onSubmit {
                                     sendMessage()
                                 }
+                                .disabled(conversationManager.isLoading)
                             
-                            if !inputText.isEmpty {
+                            if conversationManager.isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.8)
+                            } else if !inputText.isEmpty {
                                 Button(action: { sendMessage() }) {
                                     Image(systemName: "arrow.up.circle.fill")
                                         .font(.title2)
@@ -204,30 +204,98 @@ struct ChatView: View {
                     .padding(.horizontal, 16)
                 }
                 .padding(.bottom, 40)
+                    }
+                }
+                
+                // Dimmed background overlay
+                if showSidePanel {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            showSidePanel = false
+                        }
+                }
+                
+                // Side panel
+                if showSidePanel {
+                    SidePanelContainerView(
+                        conversationManager: conversationManager,
+                        showKeyboardOnLaunch: $showKeyboardOnLaunch,
+                        serverAddress: $serverAddress,
+                        systemPrompt: $systemPrompt,
+                        selectedTheme: $selectedTheme,
+                        selectedFontStyle: $selectedFontStyle,
+                        currentView: $sidePanelView,
+                        isPresented: $showSidePanel
+                    )
+                    .frame(width: sidePanelView == .settings ? geometry.size.width : geometry.size.width * 0.85)
+                    .transition(.move(edge: .leading))
+                }
             }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(
-                conversationManager: conversationManager,
-                showKeyboardOnLaunch: $showKeyboardOnLaunch,
-                serverAddress: $serverAddress,
-                systemPrompt: $systemPrompt,
-                selectedTheme: $selectedTheme,
-                selectedFontStyle: $selectedFontStyle
+            .animation(.easeOut(duration: 0.3), value: showSidePanel)
+            .animation(.easeInOut(duration: 0.3), value: sidePanelView)
+            .overlay(
+                // Invisible edge swipe area
+                HStack {
+                    // Left edge for opening sidebar
+                    Color.clear
+                        .frame(width: 30)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 20)
+                                .onEnded { value in
+                                    if value.translation.width > 50 && !showSidePanel {
+                                        withAnimation {
+                                            sidePanelView = .chatHistory
+                                            showSidePanel = true
+                                        }
+                                    }
+                                }
+                        )
+                    
+                    Spacer()
+                        .allowsHitTesting(false) // Allow taps to pass through
+                }
+                .allowsHitTesting(!showSidePanel) // Only intercept when sidebar is closed
+            )
+            .simultaneousGesture(
+                // Global gesture for closing sidebar
+                DragGesture(minimumDistance: 20)
+                    .onEnded { value in
+                        // Swipe from right to left to close side panel
+                        if value.translation.width < -100 && showSidePanel {
+                            withAnimation {
+                                showSidePanel = false
+                            }
+                        }
+                    }
             )
         }
         .onAppear {
+            // Load saved server address
+            if let savedAddress = UserDefaults.standard.string(forKey: "serverAddress") {
+                serverAddress = savedAddress
+                conversationManager.serverAddress = savedAddress
+            }
+            
             if showKeyboardOnLaunch {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     isInputFocused = true
                 }
             }
+            loadModelsFromServer()
         }
-        .onChange(of: serverAddress) { newValue in
+        .onChange(of: serverAddress) { oldValue, newValue in
             conversationManager.serverAddress = newValue
+            // Save to UserDefaults
+            UserDefaults.standard.set(newValue, forKey: "serverAddress")
+            loadModelsFromServer()
         }
-        .onChange(of: systemPrompt) { newValue in
+        .onChange(of: systemPrompt) { oldValue, newValue in
             conversationManager.systemPrompt = newValue
+        }
+        .onChange(of: selectedModel) { oldValue, newValue in
+            conversationManager.selectedModel = newValue
         }
     }
     
@@ -235,6 +303,35 @@ struct ChatView: View {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         conversationManager.sendMessage(inputText)
         inputText = ""
+    }
+    
+    private func formatModelName(_ modelName: String) -> String {
+        // Remove ":latest" suffix and simplify model name
+        let name = modelName.replacingOccurrences(of: ":latest", with: "")
+        return name
+    }
+    
+    private func loadModelsFromServer() {
+        guard !serverAddress.isEmpty else { return }
+        
+        Task {
+            do {
+                let models = try await NetworkManager.shared.getModels(from: serverAddress)
+                
+                await MainActor.run {
+                    if !models.isEmpty {
+                        self.availableModels = models
+                        // If the current selected model is not in the list, select the first one
+                        if !models.contains(selectedModel) {
+                            self.selectedModel = models.first ?? "qwen2.5:latest"
+                        }
+                    }
+                }
+            } catch {
+                // Silently fail - keep default models
+                print("Failed to load models from server: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
@@ -268,6 +365,7 @@ struct WelcomeView: View {
 struct MessagesListView: View {
     let messages: [Message]
     let fontStyle: ChatView.FontStyle
+    @FocusState.Binding var isInputFocused: Bool
     
     var body: some View {
         ScrollView {
@@ -280,7 +378,12 @@ struct MessagesListView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 20)
-                .onChange(of: messages.count) { _ in
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Dismiss keyboard when tapping on messages
+                    isInputFocused = false
+                }
+                .onChange(of: messages.count) { oldValue, newValue in
                     if let lastMessage = messages.last {
                         withAnimation {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
@@ -302,43 +405,248 @@ struct MessageBubble: View {
                 Spacer()
             }
             
-            Text(message.content)
-                .font(fontStyle.apply(size: 17, weight: .regular))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    message.isUser
-                        ? Color.white.opacity(0.2)
-                        : Color.white.opacity(0.1)
-                )
-                .cornerRadius(20)
-                .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 0) {
+                Text(formattedContent)
+                    .font(fontStyle.apply(size: 17, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(message.isUser ? .trailing : .leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                message.isUser
+                    ? Color.white.opacity(0.2)
+                    : Color.white.opacity(0.1)
+            )
+            .cornerRadius(20)
+            .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
             
             if !message.isUser {
                 Spacer()
             }
         }
     }
+    
+    private var formattedContent: AttributedString {
+        do {
+            // Try to parse as full markdown (including headers, lists, code blocks)
+            var attributed = try AttributedString(markdown: message.content)
+            
+            // Apply white color to all text
+            for run in attributed.runs {
+                let range = run.range
+                attributed[range].foregroundColor = .white
+            }
+            
+            return attributed
+        } catch {
+            // If markdown parsing fails, return plain text
+            var attributed = AttributedString(message.content)
+            attributed.foregroundColor = .white
+            return attributed
+        }
+    }
 }
 
-struct SuggestionChip: View {
-    let title: String
-    let subtitle: String
+enum SidePanelContentView {
+    case chatHistory
+    case settings
+}
+
+struct SidePanelContainerView: View {
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var showKeyboardOnLaunch: Bool
+    @Binding var serverAddress: String
+    @Binding var systemPrompt: String
+    @Binding var selectedTheme: ChatView.AppTheme
+    @Binding var selectedFontStyle: ChatView.FontStyle
+    @Binding var currentView: SidePanelContentView
+    @Binding var isPresented: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.white)
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.7))
+        ZStack {
+            if currentView == .chatHistory {
+                ChatHistoryView(
+                    conversationManager: conversationManager,
+                    currentView: $currentView,
+                    isPresented: $isPresented
+                )
+                .transition(.move(edge: .leading))
+            } else {
+                SettingsView(
+                    conversationManager: conversationManager,
+                    showKeyboardOnLaunch: $showKeyboardOnLaunch,
+                    serverAddress: $serverAddress,
+                    systemPrompt: $systemPrompt,
+                    selectedTheme: $selectedTheme,
+                    selectedFontStyle: $selectedFontStyle,
+                    isInSidePanel: true,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            currentView = .chatHistory
+                        }
+                    },
+                    onDismiss: {
+                        isPresented = false
+                    }
+                )
+                .transition(.move(edge: .trailing))
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .background(Color.white.opacity(0.15))
-        .cornerRadius(16)
+        .animation(.easeInOut(duration: 0.3), value: currentView)
+    }
+}
+
+struct ChatHistoryView: View {
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var currentView: SidePanelContentView
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("Chat History")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    Button(action: { 
+                        isPresented = false
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 60)
+                .padding(.bottom, 20)
+                
+                // Chat History List
+                if conversationManager.conversationHistory.isEmpty {
+                    VStack(spacing: 16) {
+                        Spacer()
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.system(size: 60))
+                            .foregroundColor(.white.opacity(0.3))
+                        Text("No chat history")
+                            .font(.title3)
+                            .foregroundColor(.white.opacity(0.5))
+                        Text("Start a conversation to see it here")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.4))
+                        Spacer()
+                    }
+                } else {
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            ForEach(conversationManager.conversationHistory) { conversation in
+                                ConversationHistoryRow(
+                                    conversation: conversation,
+                                    conversationManager: conversationManager,
+                                    isPresented: $isPresented
+                                )
+                            }
+                        }
+                        .padding(.vertical, 20)
+                        .padding(.horizontal, 16)
+                    }
+                }
+                
+                Divider()
+                    .background(Color.white.opacity(0.2))
+                
+                // Settings Button at Bottom
+                Button(action: {
+                    currentView = .settings
+                }) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title3)
+                            .foregroundColor(.white)
+                            .frame(width: 30)
+                        
+                        Text("Settings")
+                            .font(.body)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .background(Color.white.opacity(0.05))
+                }
+            }
+        }
+    }
+}
+
+struct ConversationHistoryRow: View {
+    let conversation: Conversation
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var isPresented: Bool
+    
+    private var previewText: String {
+        if let firstMessage = conversation.messages.first {
+            return firstMessage.content
+        }
+        return "Empty conversation"
+    }
+    
+    private var messageCount: Int {
+        return conversation.messages.count
+    }
+    
+    private var formattedDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: conversation.createdAt, relativeTo: Date())
+    }
+    
+    var body: some View {
+        Button(action: {
+            conversationManager.loadConversation(conversation)
+            isPresented = false
+        }) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(formattedDate)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.caption2)
+                        Text("\(messageCount)")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.white.opacity(0.5))
+                }
+                
+                Text(previewText)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
