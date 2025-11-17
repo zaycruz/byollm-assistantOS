@@ -1,0 +1,563 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		AF32B4A72ECAAA8A0037643D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AF32B4912ECAAA880037643D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AF32B4982ECAAA880037643D;
+			remoteInfo = "byollm-assistantOS";
+		};
+		AF32B4B12ECAAA8A0037643D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AF32B4912ECAAA880037643D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AF32B4982ECAAA880037643D;
+			remoteInfo = "byollm-assistantOS";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		AF32B4992ECAAA890037643D /* byollm-assistantOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "byollm-assistantOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF32B4A62ECAAA8A0037643D /* byollm-assistantOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "byollm-assistantOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF32B4B02ECAAA8A0037643D /* byollm-assistantOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "byollm-assistantOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		AF32B49B2ECAAA890037643D /* byollm-assistantOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "byollm-assistantOS";
+			sourceTree = "<group>";
+		};
+		AF32B4A92ECAAA8A0037643D /* byollm-assistantOSTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "byollm-assistantOSTests";
+			sourceTree = "<group>";
+		};
+		AF32B4B32ECAAA8A0037643D /* byollm-assistantOSUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "byollm-assistantOSUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AF32B4962ECAAA880037643D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF32B4A32ECAAA8A0037643D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF32B4AD2ECAAA8A0037643D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AF32B4902ECAAA880037643D = {
+			isa = PBXGroup;
+			children = (
+				AF32B49B2ECAAA890037643D /* byollm-assistantOS */,
+				AF32B4A92ECAAA8A0037643D /* byollm-assistantOSTests */,
+				AF32B4B32ECAAA8A0037643D /* byollm-assistantOSUITests */,
+				AF32B49A2ECAAA890037643D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AF32B49A2ECAAA890037643D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AF32B4992ECAAA890037643D /* byollm-assistantOS.app */,
+				AF32B4A62ECAAA8A0037643D /* byollm-assistantOSTests.xctest */,
+				AF32B4B02ECAAA8A0037643D /* byollm-assistantOSUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AF32B4982ECAAA880037643D /* byollm-assistantOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF32B4BA2ECAAA8A0037643D /* Build configuration list for PBXNativeTarget "byollm-assistantOS" */;
+			buildPhases = (
+				AF32B4952ECAAA880037643D /* Sources */,
+				AF32B4962ECAAA880037643D /* Frameworks */,
+				AF32B4972ECAAA880037643D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AF32B49B2ECAAA890037643D /* byollm-assistantOS */,
+			);
+			name = "byollm-assistantOS";
+			packageProductDependencies = (
+			);
+			productName = "byollm-assistantOS";
+			productReference = AF32B4992ECAAA890037643D /* byollm-assistantOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AF32B4A52ECAAA8A0037643D /* byollm-assistantOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF32B4BD2ECAAA8A0037643D /* Build configuration list for PBXNativeTarget "byollm-assistantOSTests" */;
+			buildPhases = (
+				AF32B4A22ECAAA8A0037643D /* Sources */,
+				AF32B4A32ECAAA8A0037643D /* Frameworks */,
+				AF32B4A42ECAAA8A0037643D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AF32B4A82ECAAA8A0037643D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AF32B4A92ECAAA8A0037643D /* byollm-assistantOSTests */,
+			);
+			name = "byollm-assistantOSTests";
+			packageProductDependencies = (
+			);
+			productName = "byollm-assistantOSTests";
+			productReference = AF32B4A62ECAAA8A0037643D /* byollm-assistantOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		AF32B4AF2ECAAA8A0037643D /* byollm-assistantOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF32B4C02ECAAA8A0037643D /* Build configuration list for PBXNativeTarget "byollm-assistantOSUITests" */;
+			buildPhases = (
+				AF32B4AC2ECAAA8A0037643D /* Sources */,
+				AF32B4AD2ECAAA8A0037643D /* Frameworks */,
+				AF32B4AE2ECAAA8A0037643D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AF32B4B22ECAAA8A0037643D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AF32B4B32ECAAA8A0037643D /* byollm-assistantOSUITests */,
+			);
+			name = "byollm-assistantOSUITests";
+			packageProductDependencies = (
+			);
+			productName = "byollm-assistantOSUITests";
+			productReference = AF32B4B02ECAAA8A0037643D /* byollm-assistantOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AF32B4912ECAAA880037643D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					AF32B4982ECAAA880037643D = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					AF32B4A52ECAAA8A0037643D = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = AF32B4982ECAAA880037643D;
+					};
+					AF32B4AF2ECAAA8A0037643D = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = AF32B4982ECAAA880037643D;
+					};
+				};
+			};
+			buildConfigurationList = AF32B4942ECAAA880037643D /* Build configuration list for PBXProject "byollm-assistantOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AF32B4902ECAAA880037643D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = AF32B49A2ECAAA890037643D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AF32B4982ECAAA880037643D /* byollm-assistantOS */,
+				AF32B4A52ECAAA8A0037643D /* byollm-assistantOSTests */,
+				AF32B4AF2ECAAA8A0037643D /* byollm-assistantOSUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AF32B4972ECAAA880037643D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF32B4A42ECAAA8A0037643D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF32B4AE2ECAAA8A0037643D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AF32B4952ECAAA880037643D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF32B4A22ECAAA8A0037643D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF32B4AC2ECAAA8A0037643D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AF32B4A82ECAAA8A0037643D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AF32B4982ECAAA880037643D /* byollm-assistantOS */;
+			targetProxy = AF32B4A72ECAAA8A0037643D /* PBXContainerItemProxy */;
+		};
+		AF32B4B22ECAAA8A0037643D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AF32B4982ECAAA880037643D /* byollm-assistantOS */;
+			targetProxy = AF32B4B12ECAAA8A0037643D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AF32B4B82ECAAA8A0037643D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AF32B4B92ECAAA8A0037643D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AF32B4BB2ECAAA8A0037643D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AF32B4BC2ECAAA8A0037643D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AF32B4BE2ECAAA8A0037643D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOSTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/byollm-assistantOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/byollm-assistantOS";
+			};
+			name = Debug;
+		};
+		AF32B4BF2ECAAA8A0037643D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOSTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/byollm-assistantOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/byollm-assistantOS";
+			};
+			name = Release;
+		};
+		AF32B4C12ECAAA8A0037643D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOSUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "byollm-assistantOS";
+			};
+			name = Debug;
+		};
+		AF32B4C22ECAAA8A0037643D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RA5ZRTAX47;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOSUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "byollm-assistantOS";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AF32B4942ECAAA880037643D /* Build configuration list for PBXProject "byollm-assistantOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF32B4B82ECAAA8A0037643D /* Debug */,
+				AF32B4B92ECAAA8A0037643D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF32B4BA2ECAAA8A0037643D /* Build configuration list for PBXNativeTarget "byollm-assistantOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF32B4BB2ECAAA8A0037643D /* Debug */,
+				AF32B4BC2ECAAA8A0037643D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF32B4BD2ECAAA8A0037643D /* Build configuration list for PBXNativeTarget "byollm-assistantOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF32B4BE2ECAAA8A0037643D /* Debug */,
+				AF32B4BF2ECAAA8A0037643D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF32B4C02ECAAA8A0037643D /* Build configuration list for PBXNativeTarget "byollm-assistantOSUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF32B4C12ECAAA8A0037643D /* Debug */,
+				AF32B4C22ECAAA8A0037643D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AF32B4912ECAAA880037643D /* Project object */;
+}
