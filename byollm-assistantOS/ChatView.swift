@@ -76,6 +76,10 @@ struct ChatView: View {
                         endPoint: .bottom
                     )
                     .ignoresSafeArea()
+                    .onTapGesture {
+                        // Dismiss keyboard when tapping outside
+                        isInputFocused = false
+                    }
                     
                     VStack(spacing: 0) {
                 // Top Bar
@@ -145,7 +149,7 @@ struct ChatView: View {
                 if conversationManager.currentConversation.messages.isEmpty {
                     WelcomeView(fontStyle: selectedFontStyle)
                 } else {
-                    MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle)
+                    MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isInputFocused: $isInputFocused)
                 }
                 
                 // Input Area
@@ -230,6 +234,42 @@ struct ChatView: View {
             }
             .animation(.easeOut(duration: 0.3), value: showSidePanel)
             .animation(.easeInOut(duration: 0.3), value: sidePanelView)
+            .overlay(
+                // Invisible edge swipe area
+                HStack {
+                    // Left edge for opening sidebar
+                    Color.clear
+                        .frame(width: 30)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 20)
+                                .onEnded { value in
+                                    if value.translation.width > 50 && !showSidePanel {
+                                        withAnimation {
+                                            sidePanelView = .chatHistory
+                                            showSidePanel = true
+                                        }
+                                    }
+                                }
+                        )
+                    
+                    Spacer()
+                        .allowsHitTesting(false) // Allow taps to pass through
+                }
+                .allowsHitTesting(!showSidePanel) // Only intercept when sidebar is closed
+            )
+            .simultaneousGesture(
+                // Global gesture for closing sidebar
+                DragGesture(minimumDistance: 20)
+                    .onEnded { value in
+                        // Swipe from right to left to close side panel
+                        if value.translation.width < -100 && showSidePanel {
+                            withAnimation {
+                                showSidePanel = false
+                            }
+                        }
+                    }
+            )
         }
         .onAppear {
             // Load saved server address
@@ -325,6 +365,7 @@ struct WelcomeView: View {
 struct MessagesListView: View {
     let messages: [Message]
     let fontStyle: ChatView.FontStyle
+    @FocusState.Binding var isInputFocused: Bool
     
     var body: some View {
         ScrollView {
@@ -337,6 +378,11 @@ struct MessagesListView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 20)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Dismiss keyboard when tapping on messages
+                    isInputFocused = false
+                }
                 .onChange(of: messages.count) { oldValue, newValue in
                     if let lastMessage = messages.last {
                         withAnimation {
@@ -501,7 +547,11 @@ struct ChatHistoryView: View {
                     ScrollView {
                         VStack(spacing: 12) {
                             ForEach(conversationManager.conversationHistory) { conversation in
-                                ConversationHistoryRow(conversation: conversation)
+                                ConversationHistoryRow(
+                                    conversation: conversation,
+                                    conversationManager: conversationManager,
+                                    isPresented: $isPresented
+                                )
                             }
                         }
                         .padding(.vertical, 20)
@@ -543,6 +593,8 @@ struct ChatHistoryView: View {
 
 struct ConversationHistoryRow: View {
     let conversation: Conversation
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var isPresented: Bool
     
     private var previewText: String {
         if let firstMessage = conversation.messages.first {
@@ -562,33 +614,39 @@ struct ConversationHistoryRow: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(formattedDate)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.6))
-                
-                Spacer()
-                
-                HStack(spacing: 4) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.caption2)
-                    Text("\(messageCount)")
+        Button(action: {
+            conversationManager.loadConversation(conversation)
+            isPresented = false
+        }) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(formattedDate)
                         .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.caption2)
+                        Text("\(messageCount)")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.white.opacity(0.5))
                 }
-                .foregroundColor(.white.opacity(0.5))
+                
+                Text(previewText)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
-            
-            Text(previewText)
-                .font(.body)
-                .foregroundColor(.white)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(12)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(12)
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

@@ -57,6 +57,29 @@ struct ChatResponse: Codable {
     }
 }
 
+struct ChatStreamResponse: Codable {
+    let id: String
+    let object: String
+    let model: String
+    let choices: [StreamChoice]
+    
+    struct StreamChoice: Codable {
+        let index: Int
+        let delta: Delta
+        let finishReason: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case index, delta
+            case finishReason = "finish_reason"
+        }
+    }
+    
+    struct Delta: Codable {
+        let role: String?
+        let content: String?
+    }
+}
+
 struct ModelsResponse: Codable {
     let object: String
     let data: [ModelInfo]
@@ -202,6 +225,95 @@ class NetworkManager {
         }
         
         return content
+    }
+    
+    // Send chat message with streaming
+    func sendChatMessageStreaming(
+        to serverAddress: String,
+        model: String,
+        messages: [ChatMessage],
+        systemPrompt: String? = nil,
+        temperature: Double = 0.7,
+        maxTokens: Int = 1024,
+        onChunk: @escaping (String) -> Void
+    ) async throws {
+        var urlString = serverAddress
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://\(urlString)"
+        }
+        
+        guard let url = URL(string: "\(urlString)/v1/chat/completions") else {
+            throw NetworkError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120.0
+        
+        // Build messages array with optional system prompt
+        var allMessages: [ChatMessage] = []
+        if let systemPrompt = systemPrompt, !systemPrompt.isEmpty {
+            allMessages.append(ChatMessage(role: "system", content: systemPrompt))
+        }
+        allMessages.append(contentsOf: messages)
+        
+        let chatRequest = ChatRequest(
+            model: model,
+            messages: allMessages,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            stream: true
+        )
+        
+        request.httpBody = try JSONEncoder().encode(chatRequest)
+        
+        let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+        }
+        
+        var buffer = ""
+        
+        for try await byte in asyncBytes {
+            buffer.append(Character(UnicodeScalar(byte)))
+            
+            // Process complete lines
+            while let newlineIndex = buffer.firstIndex(of: "\n") {
+                let line = String(buffer[..<newlineIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+                buffer.removeSubrange(...newlineIndex)
+                
+                // Skip empty lines
+                guard !line.isEmpty else { continue }
+                
+                // Skip "data: [DONE]" marker
+                if line == "data: [DONE]" {
+                    continue
+                }
+                
+                // Parse SSE format
+                if line.hasPrefix("data: ") {
+                    let jsonString = String(line.dropFirst(6))
+                    
+                    if let jsonData = jsonString.data(using: .utf8) {
+                        do {
+                            let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
+                            if let content = streamResponse.choices.first?.delta.content {
+                                onChunk(content)
+                            }
+                        } catch {
+                            // Skip malformed JSON chunks
+                            print("Failed to parse chunk: \(error)")
+                        }
+                    }
+                }
+            }
+        }
     }
     
     enum NetworkError: LocalizedError {
