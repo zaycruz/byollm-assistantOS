@@ -19,10 +19,12 @@ struct ChatRequest: Codable {
     let temperature: Double?
     let maxTokens: Int?
     let stream: Bool
+    let safetyLevel: String?
     
     enum CodingKeys: String, CodingKey {
         case model, messages, temperature, stream
         case maxTokens = "max_tokens"
+        case safetyLevel = "safety_level"
     }
 }
 
@@ -174,6 +176,7 @@ class NetworkManager {
         model: String,
         messages: [ChatMessage],
         systemPrompt: String? = nil,
+        safetyLevel: String? = nil,
         temperature: Double = 0.7,
         maxTokens: Int = 1024
     ) async throws -> String {
@@ -203,7 +206,8 @@ class NetworkManager {
             messages: allMessages,
             temperature: temperature,
             maxTokens: maxTokens,
-            stream: false
+            stream: false,
+            safetyLevel: safetyLevel
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -233,6 +237,7 @@ class NetworkManager {
         model: String,
         messages: [ChatMessage],
         systemPrompt: String? = nil,
+        safetyLevel: String? = nil,
         temperature: Double = 0.7,
         maxTokens: Int = 1024,
         onChunk: @escaping (String) -> Void
@@ -263,7 +268,8 @@ class NetworkManager {
             messages: allMessages,
             temperature: temperature,
             maxTokens: maxTokens,
-            stream: true
+            stream: true,
+            safetyLevel: safetyLevel
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)

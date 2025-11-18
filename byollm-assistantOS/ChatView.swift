@@ -20,7 +20,19 @@ struct ChatView: View {
     @State private var selectedFontStyle: FontStyle = .system
     @State private var selectedModel = "qwen2.5:latest"
     @State private var availableModels: [String] = ["qwen2.5:latest"]
+    @State private var safetyLevel: SafetyLevel = .medium
+    @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isInputFocused: Bool
+    
+    enum SafetyLevel: String, CaseIterable {
+        case low = "low"
+        case medium = "medium"
+        case high = "high"
+        
+        var displayName: String {
+            rawValue.capitalized
+        }
+    }
     
     enum AppTheme {
         case ocean, sunset, forest, midnight, lavender, crimson, coral, arctic
@@ -203,7 +215,7 @@ struct ChatView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, keyboardHeight > 0 ? 8 : 40)
                     }
                 }
                 
@@ -225,6 +237,7 @@ struct ChatView: View {
                         systemPrompt: $systemPrompt,
                         selectedTheme: $selectedTheme,
                         selectedFontStyle: $selectedFontStyle,
+                        safetyLevel: $safetyLevel,
                         currentView: $sidePanelView,
                         isPresented: $showSidePanel
                     )
@@ -278,12 +291,41 @@ struct ChatView: View {
                 conversationManager.serverAddress = savedAddress
             }
             
+            // Load saved safety level
+            if let savedLevel = UserDefaults.standard.string(forKey: "safetyLevel"),
+               let level = SafetyLevel(rawValue: savedLevel) {
+                safetyLevel = level
+                conversationManager.safetyLevel = level.rawValue
+            }
+            
             if showKeyboardOnLaunch {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     isInputFocused = true
                 }
             }
             loadModelsFromServer()
+            
+            // Setup keyboard notifications
+            NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillShowNotification,
+                object: nil,
+                queue: .main
+            ) { notification in
+                guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                withAnimation(.easeOut(duration: 0.3)) {
+                    keyboardHeight = keyboardFrame.height
+                }
+            }
+            
+            NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillHideNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                withAnimation(.easeOut(duration: 0.3)) {
+                    keyboardHeight = 0
+                }
+            }
         }
         .onChange(of: serverAddress) { oldValue, newValue in
             conversationManager.serverAddress = newValue
@@ -296,6 +338,10 @@ struct ChatView: View {
         }
         .onChange(of: selectedModel) { oldValue, newValue in
             conversationManager.selectedModel = newValue
+        }
+        .onChange(of: safetyLevel) { oldValue, newValue in
+            conversationManager.safetyLevel = newValue.rawValue
+            UserDefaults.standard.set(newValue.rawValue, forKey: "safetyLevel")
         }
     }
     
@@ -691,6 +737,7 @@ struct SidePanelContainerView: View {
     @Binding var systemPrompt: String
     @Binding var selectedTheme: ChatView.AppTheme
     @Binding var selectedFontStyle: ChatView.FontStyle
+    @Binding var safetyLevel: ChatView.SafetyLevel
     @Binding var currentView: SidePanelContentView
     @Binding var isPresented: Bool
     
@@ -711,6 +758,7 @@ struct SidePanelContainerView: View {
                     systemPrompt: $systemPrompt,
                     selectedTheme: $selectedTheme,
                     selectedFontStyle: $selectedFontStyle,
+                    safetyLevel: $safetyLevel,
                     isInSidePanel: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.3)) {

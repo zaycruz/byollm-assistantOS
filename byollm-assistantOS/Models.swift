@@ -48,6 +48,7 @@ class ConversationManager: ObservableObject {
     var serverAddress: String?
     var systemPrompt: String?
     var selectedModel: String = "qwen2.5:latest"
+    var safetyLevel: String = "medium"
     
     init() {
         self.currentConversation = Conversation(messages: [], createdAt: Date())
@@ -143,6 +144,7 @@ class ConversationManager: ObservableObject {
                     model: selectedModel,
                     messages: Array(apiMessages),
                     systemPrompt: systemPrompt,
+                    safetyLevel: safetyLevel,
                     temperature: 0.7,
                     maxTokens: 1024
                 ) { chunk in

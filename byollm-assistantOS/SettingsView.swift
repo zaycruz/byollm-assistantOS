@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Binding var systemPrompt: String
     @Binding var selectedTheme: ChatView.AppTheme
     @Binding var selectedFontStyle: ChatView.FontStyle
+    @Binding var safetyLevel: ChatView.SafetyLevel
     @State private var showingDeleteAlert = false
     @State private var showingPersonalization = false
     @State private var showingManageModels = false
@@ -307,6 +308,50 @@ struct SettingsView: View {
                                     title: "Show keyboard on launch",
                                     isOn: $showKeyboardOnLaunch
                                 )
+                                
+                                Divider()
+                                    .background(Color.white.opacity(0.1))
+                                    .padding(.leading, 70)
+                                
+                                // Safety Level Picker
+                                HStack(spacing: 16) {
+                                    Image(systemName: "shield.lefthalf.filled")
+                                        .font(.title3)
+                                        .foregroundColor(.white)
+                                        .frame(width: 24)
+                                    
+                                    Text("Tool Safety Level")
+                                        .foregroundColor(.white)
+                                        .font(.body)
+                                    
+                                    Spacer()
+                                    
+                                    Menu {
+                                        ForEach(ChatView.SafetyLevel.allCases, id: \.self) { level in
+                                            Button(action: {
+                                                safetyLevel = level
+                                            }) {
+                                                HStack {
+                                                    Text(level.displayName)
+                                                    if safetyLevel == level {
+                                                        Image(systemName: "checkmark")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Text(safetyLevel.displayName)
+                                                .foregroundColor(.white.opacity(0.7))
+                                                .font(.body)
+                                            Image(systemName: "chevron.up.chevron.down")
+                                                .font(.caption2)
+                                                .foregroundColor(.white.opacity(0.5))
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
                                 
                                 Divider()
                                     .background(Color.white.opacity(0.1))
