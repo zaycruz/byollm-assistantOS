@@ -278,15 +278,27 @@ class NetworkManager {
             throw NetworkError.serverError(statusCode: httpResponse.statusCode)
         }
         
-        var buffer = ""
+        var buffer = Data()
+        var stringBuffer = ""
         
         for try await byte in asyncBytes {
-            buffer.append(Character(UnicodeScalar(byte)))
+            buffer.append(byte)
+            
+            // Try to decode accumulated bytes as UTF-8 string
+            // Use lossy decoding to handle incomplete sequences gracefully
+            if let decodedString = String(bytes: buffer, encoding: .utf8) {
+                stringBuffer += decodedString
+                buffer.removeAll()
+            } else if buffer.count > 4 {
+                // If buffer is getting too large without valid UTF-8, use lossy conversion
+                stringBuffer += String(decoding: buffer, as: UTF8.self)
+                buffer.removeAll()
+            }
             
             // Process complete lines
-            while let newlineIndex = buffer.firstIndex(of: "\n") {
-                let line = String(buffer[..<newlineIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
-                buffer.removeSubrange(...newlineIndex)
+            while let newlineIndex = stringBuffer.firstIndex(of: "\n") {
+                let line = String(stringBuffer[..<newlineIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+                stringBuffer.removeSubrange(...newlineIndex)
                 
                 // Skip empty lines
                 guard !line.isEmpty else { continue }
@@ -309,6 +321,34 @@ class NetworkManager {
                         } catch {
                             // Skip malformed JSON chunks
                             print("Failed to parse chunk: \(error)")
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Process any remaining buffered data
+        if !buffer.isEmpty {
+            stringBuffer += String(decoding: buffer, as: UTF8.self)
+        }
+        
+        // Process any remaining lines in string buffer
+        if !stringBuffer.isEmpty {
+            let remainingLines = stringBuffer.components(separatedBy: .newlines)
+            for line in remainingLines {
+                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmedLine.isEmpty, trimmedLine != "data: [DONE]" else { continue }
+                
+                if trimmedLine.hasPrefix("data: ") {
+                    let jsonString = String(trimmedLine.dropFirst(6))
+                    if let jsonData = jsonString.data(using: .utf8) {
+                        do {
+                            let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
+                            if let content = streamResponse.choices.first?.delta.content {
+                                onChunk(content)
+                            }
+                        } catch {
+                            print("Failed to parse final chunk: \(error)")
                         }
                     }
                 }

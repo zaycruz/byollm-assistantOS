@@ -149,7 +149,7 @@ struct ChatView: View {
                 if conversationManager.currentConversation.messages.isEmpty {
                     WelcomeView(fontStyle: selectedFontStyle)
                 } else {
-                    MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isInputFocused: $isInputFocused)
+                    MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isLoading: conversationManager.isLoading, isInputFocused: $isInputFocused)
                 }
                 
                 // Input Area
@@ -365,6 +365,7 @@ struct WelcomeView: View {
 struct MessagesListView: View {
     let messages: [Message]
     let fontStyle: ChatView.FontStyle
+    let isLoading: Bool
     @FocusState.Binding var isInputFocused: Bool
     
     var body: some View {
@@ -374,6 +375,12 @@ struct MessagesListView: View {
                     ForEach(messages) { message in
                         MessageBubble(message: message, fontStyle: fontStyle)
                             .id(message.id)
+                    }
+                    
+                    // Show typing indicator when loading and last message is not empty
+                    if isLoading && (messages.last?.content.isEmpty ?? true) {
+                        TypingIndicator()
+                            .id("typing-indicator")
                     }
                 }
                 .padding(.horizontal, 20)
@@ -390,6 +397,13 @@ struct MessagesListView: View {
                         }
                     }
                 }
+                .onChange(of: isLoading) { oldValue, newValue in
+                    if newValue {
+                        withAnimation {
+                            proxy.scrollTo("typing-indicator", anchor: .bottom)
+                        }
+                    }
+                }
             }
         }
     }
@@ -400,51 +414,268 @@ struct MessageBubble: View {
     let fontStyle: ChatView.FontStyle
     
     var body: some View {
-        HStack {
-            if message.isUser {
+        if message.isUser {
+            // User message: compact bubble on the right
+            HStack {
                 Spacer()
+                
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(message.content)
+                        .font(fontStyle.apply(size: 17, weight: .regular))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.trailing)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.2))
+                .cornerRadius(20)
+                .frame(maxWidth: 280, alignment: .trailing)
             }
-            
-            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 0) {
-                Text(formattedContent)
-                    .font(fontStyle.apply(size: 17, weight: .regular))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(message.isUser ? .trailing : .leading)
+        } else {
+            // AI message: full width, no bubble
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(parseMessageContent(message.content).enumerated()), id: \.offset) { index, block in
+                    switch block {
+                    case .text(let attributedContent):
+                        Text(attributedContent)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    
+                    case .code(let code, let language):
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let lang = language, !lang.isEmpty {
+                                Text(lang)
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 8)
+                            }
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                Text(code)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(.white)
+                                    .padding(12)
+                            }
+                        }
+                        .background(Color.black.opacity(0.3))
+                        .cornerRadius(8)
+                    
+                    case .toolResult(let result):
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "wrench.and.screwdriver.fill")
+                                    .font(.caption)
+                                Text("Tool Result")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.white.opacity(0.7))
+                            
+                            Text(result)
+                                .font(.system(size: 15, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.9))
+                                .padding(8)
+                        }
+                        .padding(10)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                message.isUser
-                    ? Color.white.opacity(0.2)
-                    : Color.white.opacity(0.1)
-            )
-            .cornerRadius(20)
-            .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
-            
-            if !message.isUser {
-                Spacer()
-            }
+            .padding(.horizontal, 0)
+            .padding(.vertical, 8)
         }
     }
     
-    private var formattedContent: AttributedString {
-        do {
-            // Try to parse as full markdown (including headers, lists, code blocks)
-            var attributed = try AttributedString(markdown: message.content)
+    enum ContentBlock {
+        case text(AttributedString)
+        case code(String, language: String?)
+        case toolResult(String)
+    }
+    
+    private func parseMessageContent(_ content: String) -> [ContentBlock] {
+        var blocks: [ContentBlock] = []
+        var currentText = ""
+        
+        let lines = content.components(separatedBy: .newlines)
+        var i = 0
+        
+        while i < lines.count {
+            let line = lines[i]
             
-            // Apply white color to all text
-            for run in attributed.runs {
-                let range = run.range
-                attributed[range].foregroundColor = .white
+            // Check for code block start
+            if line.hasPrefix("```") {
+                // Save any accumulated text
+                if !currentText.isEmpty {
+                    blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
+                    currentText = ""
+                }
+                
+                // Extract language if specified
+                let language = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                var codeLines: [String] = []
+                i += 1
+                
+                // Collect code lines until closing ```
+                while i < lines.count && !lines[i].hasPrefix("```") {
+                    codeLines.append(lines[i])
+                    i += 1
+                }
+                
+                let code = codeLines.joined(separator: "\n")
+                blocks.append(.code(code, language: language.isEmpty ? nil : language))
+                i += 1
+                continue
             }
             
-            return attributed
-        } catch {
-            // If markdown parsing fails, return plain text
-            var attributed = AttributedString(message.content)
-            attributed.foregroundColor = .white
-            return attributed
+            // Check for tool result patterns (customize this based on your LLM's output format)
+            if line.contains("Tool:") || line.contains("Result:") || line.hasPrefix("[") && line.contains("]") {
+                // Save any accumulated text
+                if !currentText.isEmpty {
+                    blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
+                    currentText = ""
+                }
+                
+                var toolResultLines: [String] = [line]
+                i += 1
+                
+                // Collect subsequent lines that look like tool output
+                while i < lines.count && (lines[i].isEmpty || lines[i].hasPrefix(" ") || lines[i].hasPrefix("\t") || lines[i].contains(":")) {
+                    toolResultLines.append(lines[i])
+                    i += 1
+                    
+                    // Break if we hit a code block or regular text
+                    if i < lines.count && (lines[i].hasPrefix("```") || (!lines[i].isEmpty && !lines[i].hasPrefix(" ") && !lines[i].contains(":"))) {
+                        break
+                    }
+                }
+                
+                blocks.append(.toolResult(toolResultLines.joined(separator: "\n")))
+                continue
+            }
+            
+            // Regular text line
+            currentText += line + "\n"
+            i += 1
         }
+        
+        // Add any remaining text
+        if !currentText.isEmpty {
+            blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
+        }
+        
+        return blocks
+    }
+    
+    private func parseMarkdown(_ text: String) -> AttributedString {
+        var result = AttributedString()
+        let lines = text.components(separatedBy: .newlines)
+        
+        for (lineIndex, line) in lines.enumerated() {
+            var lineText = line
+            var isBold = false
+            var currentString = ""
+            var attributedLine = AttributedString()
+            
+            // Check if line starts with markdown header
+            if lineText.hasPrefix("# ") {
+                lineText = String(lineText.dropFirst(2))
+                var headerAttr = AttributedString(lineText)
+                headerAttr.font = fontStyle.apply(size: 24, weight: .bold)
+                headerAttr.foregroundColor = .white
+                attributedLine.append(headerAttr)
+            } else if lineText.hasPrefix("## ") {
+                lineText = String(lineText.dropFirst(3))
+                var headerAttr = AttributedString(lineText)
+                headerAttr.font = fontStyle.apply(size: 20, weight: .bold)
+                headerAttr.foregroundColor = .white
+                attributedLine.append(headerAttr)
+            } else if lineText.hasPrefix("### ") {
+                lineText = String(lineText.dropFirst(4))
+                var headerAttr = AttributedString(lineText)
+                headerAttr.font = fontStyle.apply(size: 18, weight: .bold)
+                headerAttr.foregroundColor = .white
+                attributedLine.append(headerAttr)
+            } else if lineText.hasPrefix("- ") || lineText.hasPrefix("* ") {
+                // Bullet point - parse inline formatting
+                attributedLine = parseInlineFormatting(lineText)
+            } else {
+                // Regular text - parse inline formatting
+                attributedLine = parseInlineFormatting(lineText)
+            }
+            
+            result.append(attributedLine)
+            
+            // Add newline between lines (except for the last one)
+            if lineIndex < lines.count - 1 {
+                result.append(AttributedString("\n"))
+            }
+        }
+        
+        return result
+    }
+    
+    private func parseInlineFormatting(_ text: String) -> AttributedString {
+        var result = AttributedString()
+        var currentText = ""
+        var i = text.startIndex
+        
+        while i < text.endIndex {
+            let char = text[i]
+            
+            // Check for bold markers (**)
+            if char == "*" && text.index(after: i) < text.endIndex && text[text.index(after: i)] == "*" {
+                // Found **, save current text if any
+                if !currentText.isEmpty {
+                    var normalAttr = AttributedString(currentText)
+                    normalAttr.font = fontStyle.apply(size: 17, weight: .regular)
+                    normalAttr.foregroundColor = .white
+                    result.append(normalAttr)
+                    currentText = ""
+                }
+                
+                // Skip the two asterisks
+                i = text.index(i, offsetBy: 2)
+                
+                // Find the closing **
+                var boldText = ""
+                while i < text.endIndex {
+                    if text[i] == "*" && text.index(after: i) < text.endIndex && text[text.index(after: i)] == "*" {
+                        // Found closing **
+                        var boldAttr = AttributedString(boldText)
+                        boldAttr.font = fontStyle.apply(size: 17, weight: .bold)
+                        boldAttr.foregroundColor = .white
+                        result.append(boldAttr)
+                        
+                        // Skip closing **
+                        i = text.index(i, offsetBy: 2)
+                        break
+                    } else {
+                        boldText.append(text[i])
+                        i = text.index(after: i)
+                    }
+                }
+            } else {
+                currentText.append(char)
+                i = text.index(after: i)
+            }
+        }
+        
+        // Add any remaining text
+        if !currentText.isEmpty {
+            var normalAttr = AttributedString(currentText)
+            normalAttr.font = fontStyle.apply(size: 17, weight: .regular)
+            normalAttr.foregroundColor = .white
+            result.append(normalAttr)
+        }
+        
+        return result
     }
 }
 
@@ -647,6 +878,39 @@ struct ConversationHistoryRow: View {
             .cornerRadius(12)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct TypingIndicator: View {
+    @State private var animationAmount = 0.0
+    
+    var body: some View {
+        HStack(alignment: .center, spacing: 0) {
+            HStack(spacing: 8) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(animationAmount == Double(index) ? 1.3 : 1.0)
+                        .animation(
+                            Animation.easeInOut(duration: 0.6)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(index) * 0.2),
+                            value: animationAmount
+                        )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(20)
+            .frame(maxWidth: 280, alignment: .leading)
+            
+            Spacer()
+        }
+        .onAppear {
+            animationAmount = 1.0
+        }
     }
 }
 

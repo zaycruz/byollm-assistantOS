@@ -40,6 +40,7 @@ struct Conversation: Identifiable, Codable {
     }
 }
 
+@MainActor
 class ConversationManager: ObservableObject {
     @Published var currentConversation: Conversation
     @Published var conversationHistory: [Conversation] = []
@@ -148,11 +149,14 @@ class ConversationManager: ObservableObject {
                     // Accumulate the chunks and update the message on the main thread
                     accumulatedResponse += chunk
                     
+                    // Capture the current response to avoid data race
+                    let currentResponse = accumulatedResponse
+                    
                     Task { @MainActor in
                         // Update the message content
                         if messageIndex < self.currentConversation.messages.count {
                             self.currentConversation.messages[messageIndex] = Message(
-                                content: accumulatedResponse,
+                                content: currentResponse,
                                 isUser: false,
                                 timestamp: self.currentConversation.messages[messageIndex].timestamp
                             )
@@ -160,36 +164,30 @@ class ConversationManager: ObservableObject {
                     }
                 }
                 
-                await MainActor.run {
-                    self.isLoading = false
-                    self.saveConversationHistory()
-                }
+                self.isLoading = false
+                self.saveConversationHistory()
             } catch let error as NetworkManager.NetworkError {
-                await MainActor.run {
-                    // Replace the placeholder with an error message
-                    if messageIndex < self.currentConversation.messages.count {
-                        self.currentConversation.messages[messageIndex] = Message(
-                            content: "❌ Error: \(error.localizedDescription ?? "Unknown error")\n\nPlease check your server connection and try again.",
-                            isUser: false,
-                            timestamp: self.currentConversation.messages[messageIndex].timestamp
-                        )
-                    }
-                    self.isLoading = false
-                    self.saveConversationHistory()
+                // Replace the placeholder with an error message
+                if messageIndex < self.currentConversation.messages.count {
+                    self.currentConversation.messages[messageIndex] = Message(
+                        content: "❌ Error: \(error.localizedDescription ?? "Unknown error")\n\nPlease check your server connection and try again.",
+                        isUser: false,
+                        timestamp: self.currentConversation.messages[messageIndex].timestamp
+                    )
                 }
+                self.isLoading = false
+                self.saveConversationHistory()
             } catch {
-                await MainActor.run {
-                    // Replace the placeholder with an error message
-                    if messageIndex < self.currentConversation.messages.count {
-                        self.currentConversation.messages[messageIndex] = Message(
-                            content: "❌ Unexpected error: \(error.localizedDescription)\n\nPlease try again.",
-                            isUser: false,
-                            timestamp: self.currentConversation.messages[messageIndex].timestamp
-                        )
-                    }
-                    self.isLoading = false
-                    self.saveConversationHistory()
+                // Replace the placeholder with an error message
+                if messageIndex < self.currentConversation.messages.count {
+                    self.currentConversation.messages[messageIndex] = Message(
+                        content: "❌ Unexpected error: \(error.localizedDescription)\n\nPlease try again.",
+                        isUser: false,
+                        timestamp: self.currentConversation.messages[messageIndex].timestamp
+                    )
                 }
+                self.isLoading = false
+                self.saveConversationHistory()
             }
         }
     }
