@@ -12,7 +12,7 @@ struct ChatView: View {
     @State private var inputText = ""
     @State private var showSidePanel = false
     @State private var showSettings = false
-    @State private var sidePanelView: SidePanelContentView = .chatHistory
+    @State private var sidePanelView: SidePanelContentView = .navigation
     @State private var showKeyboardOnLaunch = true
     @State private var serverAddress = ""
     @State private var systemPrompt = ""
@@ -97,9 +97,9 @@ struct ChatView: View {
                 // Top Bar
                 ZStack {
                     HStack {
-                        // Side Panel Button (Chat History) - Left
+                        // Side Panel Button (Navigation) - Left
                         Button(action: { 
-                            sidePanelView = .chatHistory
+                            sidePanelView = .navigation
                             showSidePanel = true
                         }) {
                             Image(systemName: "line.3.horizontal")
@@ -259,7 +259,7 @@ struct ChatView: View {
                                 .onEnded { value in
                                     if value.translation.width > 50 && !showSidePanel {
                                         withAnimation {
-                                            sidePanelView = .chatHistory
+                                            sidePanelView = .navigation
                                             showSidePanel = true
                                         }
                                     }
@@ -726,6 +726,7 @@ struct MessageBubble: View {
 }
 
 enum SidePanelContentView {
+    case navigation
     case chatHistory
     case settings
 }
@@ -743,7 +744,14 @@ struct SidePanelContainerView: View {
     
     var body: some View {
         ZStack {
-            if currentView == .chatHistory {
+            if currentView == .navigation {
+                NavigationSidebarView(
+                    conversationManager: conversationManager,
+                    currentView: $currentView,
+                    isPresented: $isPresented
+                )
+                .transition(.move(edge: .leading))
+            } else if currentView == .chatHistory {
                 ChatHistoryView(
                     conversationManager: conversationManager,
                     currentView: $currentView,
@@ -762,7 +770,7 @@ struct SidePanelContainerView: View {
                     isInSidePanel: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.3)) {
-                            currentView = .chatHistory
+                            currentView = .navigation
                         }
                     },
                     onDismiss: {
@@ -959,6 +967,146 @@ struct TypingIndicator: View {
         .onAppear {
             animationAmount = 1.0
         }
+    }
+}
+
+// MARK: - Navigation Sidebar
+struct NavigationSidebarView: View {
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var currentView: SidePanelContentView
+    @Binding var isPresented: Bool
+    @State private var searchText = ""
+    @State private var projects = ["New project", "ApexIQ", "open Access labs"]
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Header with close button
+                HStack {
+                    Text("Navigation")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    Button(action: { isPresented = false }) {
+                        Image(systemName: "xmark")
+                            .font(.title3)
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+                
+                // Search Bar
+                HStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.gray)
+                        .font(.system(size: 16))
+                    
+                    TextField("Search", text: $searchText)
+                        .foregroundColor(.white)
+                        .font(.system(size: 17))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(12)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Atlas
+                        NavItem(icon: "brain.head.profile", title: "Atlas") {
+                            isPresented = false
+                        }
+                        
+                        // Library
+                        NavItem(icon: "books.vertical", title: "Library") {
+                            // Handle library tap
+                        }
+                        
+                        // Pinned Apps
+                        NavItem(icon: "note.text", title: "Notes") {
+                            // Handle Notes tap
+                        }
+                        
+                        NavItem(icon: "chevron.left.forwardslash.chevron.right", title: "Codex") {
+                            // Handle Codex tap
+                        }
+                        
+                        // Divider
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 8)
+                        
+                        // Projects
+                        ForEach(projects, id: \.self) { project in
+                            NavItem(icon: "folder", title: project) {
+                                // Handle project tap
+                            }
+                        }
+                        
+                        // Chat History
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 8)
+                        
+                        NavItem(icon: "bubble.left.and.bubble.right", title: "Chat History") {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentView = .chatHistory
+                            }
+                        }
+                        
+                        // Settings
+                        NavItem(icon: "gearshape", title: "Settings") {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentView = .settings
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                
+                Spacer()
+            }
+        }
+    }
+}
+
+struct NavItem: View {
+    let icon: String
+    let title: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+                    .frame(width: 24)
+                
+                Text(title)
+                    .font(.system(size: 17))
+                    .foregroundColor(.white)
+                
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.clear)
+            .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
