@@ -26,6 +26,16 @@ struct ChatRequest: Codable {
         case maxTokens = "max_tokens"
         case safetyLevel = "safety_level"
     }
+    
+    // Initialize without max_tokens by setting it to nil
+    init(model: String, messages: [ChatMessage], temperature: Double?, stream: Bool, safetyLevel: String?) {
+        self.model = model
+        self.messages = messages
+        self.temperature = temperature
+        self.maxTokens = nil  // Remove token limit
+        self.stream = stream
+        self.safetyLevel = safetyLevel
+    }
 }
 
 struct ChatResponse: Codable {
@@ -177,8 +187,7 @@ class NetworkManager {
         messages: [ChatMessage],
         systemPrompt: String? = nil,
         safetyLevel: String? = nil,
-        temperature: Double = 0.7,
-        maxTokens: Int = 1024
+        temperature: Double = 0.7
     ) async throws -> String {
         var urlString = serverAddress
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
@@ -205,7 +214,6 @@ class NetworkManager {
             model: model,
             messages: allMessages,
             temperature: temperature,
-            maxTokens: maxTokens,
             stream: false,
             safetyLevel: safetyLevel
         )
@@ -239,7 +247,6 @@ class NetworkManager {
         systemPrompt: String? = nil,
         safetyLevel: String? = nil,
         temperature: Double = 0.7,
-        maxTokens: Int = 1024,
         onChunk: @escaping (String) -> Void
     ) async throws {
         var urlString = serverAddress
@@ -267,7 +274,6 @@ class NetworkManager {
             model: model,
             messages: allMessages,
             temperature: temperature,
-            maxTokens: maxTokens,
             stream: true,
             safetyLevel: safetyLevel
         )

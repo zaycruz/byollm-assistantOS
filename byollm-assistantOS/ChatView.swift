@@ -445,6 +445,7 @@ struct MessagesListView: View {
 struct MessageBubble: View {
     let message: Message
     let fontStyle: ChatView.FontStyle
+    @State private var isThinkingExpanded = false
     
     var body: some View {
         if message.isUser {
@@ -467,6 +468,96 @@ struct MessageBubble: View {
         } else {
             // AI message: full width, no bubble
             VStack(alignment: .leading, spacing: 12) {
+                // Debug: Print thinking content availability
+                let _ = {
+                    if let thinking = message.thinkingContent {
+                        print("💭 Thinking content found: \(thinking.prefix(100))...")
+                    } else {
+                        print("❌ No thinking content for message")
+                    }
+                }()
+                
+                // Thinking section (collapsible)
+                if let thinkingContent = message.thinkingContent, !thinkingContent.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Thinking header button
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                isThinkingExpanded.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "brain")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.purple.opacity(0.9))
+                                
+                                Text("Thinking Process")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.9))
+                                
+                                Spacer()
+                                
+                                Image(systemName: isThinkingExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.purple.opacity(0.8))
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color.purple.opacity(0.15), Color.blue.opacity(0.1)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        // Expanded thinking content
+                        if isThinkingExpanded {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "lightbulb.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.yellow.opacity(0.8))
+                                    Text("Model's internal reasoning")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.6))
+                                        .italic()
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.top, 8)
+                                
+                                ScrollView {
+                                    Text(thinkingContent)
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .foregroundColor(.white.opacity(0.85))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(maxHeight: 300)
+                            }
+                            .background(Color.black.opacity(0.3))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.purple.opacity(0.2), lineWidth: 1)
+                            )
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal: .opacity
+                            ))
+                        }
+                    }
+                }
+                
+                // Main message content
                 ForEach(Array(parseMessageContent(message.content).enumerated()), id: \.offset) { index, block in
                     switch block {
                     case .text(let attributedContent):

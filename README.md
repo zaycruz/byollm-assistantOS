@@ -10,6 +10,11 @@ A beautiful, modern iOS chat interface for local LLM integration, inspired by Lo
   - Full markdown rendering support (bold, italic, headers, lists, code blocks)
   - Automatically formats LLM responses with proper styling
   - Preserves formatting while maintaining consistent white text color
+  - **Thinking Tokens Display**: Collapsible section showing model reasoning (Qwen3)
+    - Brain icon indicator when thinking content is present
+    - Tap to expand/collapse thinking process
+    - Monospaced font for better readability
+    - Automatically separates thinking from actual response
 - **Welcome Screen**: Introduction screen with "Meet AssistantOS" messaging and BYOLLM information
 - **Input Controls**: 
   - Text input field with auto-focus option
@@ -233,7 +238,22 @@ The app is structured with clean separation of concerns:
    ```bash
    ollama pull llama3
    # or any other model like: qwen2.5, phi3.5, mistral, etc.
+   ollama pull qwen3  # For thinking/reasoning models
    ```
+
+### Qwen3 Thinking Models
+
+Qwen3 models support "thinking mode" which generates internal reasoning before producing the final answer:
+- **Thinking tokens** are generated in `<think>` or `<thinking>` tags showing the model's reasoning process
+- The app automatically detects and separates thinking content from the actual response
+- **Collapsible Thinking Display**: 
+  - Brain icon indicator appears when thinking content is detected
+  - Tap to expand/collapse the thinking process
+  - View the model's internal reasoning step-by-step
+- **No Token Limits**: The app removes `max_tokens` restrictions, allowing unlimited response length
+  - Prevents truncation issues entirely
+  - Models can generate as much content as needed
+  - Thinking + response can be any length
 
 ### Connecting the App
 
@@ -253,11 +273,14 @@ The app is structured with clean separation of concerns:
 
 ### Supported Parameters
 
-- `model`: Model to use (e.g., "llama3", "qwen2.5")
+- `model`: Model to use (e.g., "llama3", "qwen2.5", "qwen3")
 - `messages`: Array of chat messages with role and content
 - `temperature`: 0.0-2.0 (default 0.7) - Controls randomness
-- `max_tokens`: Minimum 1 (default 1024) - Max response length
-- `stream`: Boolean (default false) - Streaming not yet implemented in UI
+- `max_tokens`: **Removed** (previously limited responses)
+  - No token limit imposed by the app
+  - Models can generate unlimited response length
+  - Prevents truncation issues with thinking models
+- `stream`: Boolean (default true) - Real-time streaming responses
 
 ## Next Steps
 
