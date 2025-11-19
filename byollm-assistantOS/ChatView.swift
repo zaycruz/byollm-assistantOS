@@ -94,143 +94,156 @@ struct ChatView: View {
                     }
                     
                     VStack(spacing: 0) {
-                // Top Bar
-                ZStack {
-                    HStack {
-                        // Side Panel Button (Navigation) - Left
-                        Button(action: { 
-                            sidePanelView = .navigation
-                            showSidePanel = true
-                        }) {
-                            Image(systemName: "line.3.horizontal")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 50, height: 50)
-                                .background(Color.white.opacity(0.15))
-                                .clipShape(Circle())
-                        }
-                        
-                        Spacer()
-                        
-                        // New Chat Icon Button - Right
-                        Button(action: { conversationManager.newConversation() }) {
-                            Image(systemName: "square.and.pencil")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 50, height: 50)
-                                .background(Color.white.opacity(0.15))
-                                .clipShape(Circle())
-                        }
-                    }
-                    
-                    // Model Selector - Centered (aligned with Dynamic Island)
-                    Menu {
-                        ForEach(availableModels, id: \.self) { model in
-                            Button(action: {
-                                selectedModel = model
-                            }) {
-                                HStack {
-                                    Text(formatModelName(model))
-                                    if selectedModel == model {
-                                        Image(systemName: "checkmark")
+                        // Top Bar
+                        ZStack {
+                            HStack {
+                                // Combined Settings/History Button - Left
+                                HStack(spacing: 16) {
+                                    Button(action: { 
+                                        sidePanelView = .settings
+                                        showSidePanel = true
+                                    }) {
+                                        Image(systemName: "gearshape")
+                                            .font(.title3)
+                                            .foregroundColor(.white)
+                                    }
+                                    
+                                    Button(action: { 
+                                        sidePanelView = .chatHistory
+                                        showSidePanel = true
+                                    }) {
+                                        Image(systemName: "message")
+                                            .font(.title3)
+                                            .foregroundColor(.white)
                                     }
                                 }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(formatModelName(selectedModel))
-                                .font(.body)
-                                .fontWeight(.medium)
-                                .foregroundColor(.white)
-                            Image(systemName: "chevron.down")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.15))
-                        .cornerRadius(25)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 20)
-                
-                // Messages or Welcome Screen
-                if conversationManager.currentConversation.messages.isEmpty {
-                    WelcomeView(fontStyle: selectedFontStyle)
-                } else {
-                    MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isLoading: conversationManager.isLoading, isInputFocused: $isInputFocused)
-                }
-                
-                // Input Area
-                VStack(spacing: 12) {
-                    // Input Field
-                    HStack(spacing: 12) {
-                        Button(action: {}) {
-                            Image(systemName: "plus")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
                                 .background(Color.white.opacity(0.15))
-                                .clipShape(Circle())
-                        }
-                        
-                        HStack {
-                            TextField("Ask anything", text: $inputText)
-                                .foregroundColor(.white)
-                                .focused($isInputFocused)
-                                .submitLabel(.send)
-                                .onSubmit {
-                                    sendMessage()
-                                }
-                                .disabled(conversationManager.isLoading)
-                            
-                            if conversationManager.isLoading {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(0.8)
-                            } else if !inputText.isEmpty {
-                                Button(action: { sendMessage() }) {
-                                    Image(systemName: "arrow.up.circle.fill")
+                                .cornerRadius(25)
+                                
+                                Spacer()
+                                
+                                // Apps Button - Right
+                                Button(action: { 
+                                    // TODO: Handle apps page
+                                }) {
+                                    Image(systemName: "square.grid.2x2")
                                         .font(.title2)
                                         .foregroundColor(.white)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.white.opacity(0.15))
+                                        .clipShape(Circle())
                                 }
+                                
+                                // New Chat Icon Button - Right
+                                Button(action: { conversationManager.newConversation() }) {
+                                    Image(systemName: "square.and.pencil")
+                                        .font(.title2)
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.white.opacity(0.15))
+                                        .clipShape(Circle())
+                                }
+                            }
+                            
+                            // Model Selector - Centered (no background)
+                            Menu {
+                                ForEach(availableModels, id: \.self) { model in
+                                    Button(action: {
+                                        selectedModel = model
+                                    }) {
+                                        HStack {
+                                            Text(formatModelName(model))
+                                            if selectedModel == model {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(formatModelName(selectedModel))
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.15))
-                        .cornerRadius(25)
+                        .padding(.top, 8)
+                        .padding(.bottom, 20)
                         
-                        Button(action: {}) {
-                            Image(systemName: "waveform")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
+                        // Messages or Welcome Screen
+                        if conversationManager.currentConversation.messages.isEmpty {
+                            WelcomeView(fontStyle: selectedFontStyle)
+                        } else {
+                            MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isLoading: conversationManager.isLoading, isInputFocused: $isInputFocused)
+                        }
+                        
+                        // Input Area
+                        VStack(spacing: 12) {
+                            // Input Field
+                            HStack(spacing: 12) {
+                                Button(action: {}) {
+                                    Image(systemName: "plus")
+                                        .font(.title2)
+                                        .foregroundColor(.white)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color.white.opacity(0.15))
+                                        .clipShape(Circle())
+                                }
+                                
+                                HStack {
+                                    TextField("Ask anything", text: $inputText)
+                                        .foregroundColor(.white)
+                                        .focused($isInputFocused)
+                                        .submitLabel(.send)
+                                        .onSubmit {
+                                            sendMessage()
+                                        }
+                                        .disabled(conversationManager.isLoading)
+                                    
+                                    if conversationManager.isLoading {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .scaleEffect(0.8)
+                                    } else if !inputText.isEmpty {
+                                        Button(action: { sendMessage() }) {
+                                            Image(systemName: "arrow.up.circle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
                                 .background(Color.white.opacity(0.15))
-                                .clipShape(Circle())
+                                .cornerRadius(25)
+                                
+                                Button(action: {}) {
+                                    Image(systemName: "waveform")
+                                        .font(.title2)
+                                        .foregroundColor(.white)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color.white.opacity(0.15))
+                                        .clipShape(Circle())
+                                }
+                            }
+                            .padding(.horizontal, 16)
                         }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                .padding(.bottom, keyboardHeight > 0 ? 8 : 40)
+                        .padding(.bottom, keyboardHeight > 0 ? 8 : 40)
                     }
                 }
-                
-                // Dimmed background overlay
-                if showSidePanel {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            showSidePanel = false
-                        }
-                }
-                
-                // Side panel
-                if showSidePanel {
-                    SidePanelContainerView(
+            }
+            .sheet(isPresented: $showSidePanel) {
+                if sidePanelView == .settings {
+                    SettingsView(
                         conversationManager: conversationManager,
                         showKeyboardOnLaunch: $showKeyboardOnLaunch,
                         serverAddress: $serverAddress,
@@ -238,51 +251,25 @@ struct ChatView: View {
                         selectedTheme: $selectedTheme,
                         selectedFontStyle: $selectedFontStyle,
                         safetyLevel: $safetyLevel,
-                        currentView: $sidePanelView,
+                        isInSidePanel: false,
+                        onBack: {
+                            showSidePanel = false
+                        },
+                        onDismiss: {
+                            showSidePanel = false
+                        }
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                } else if sidePanelView == .chatHistory {
+                    ChatHistorySheetView(
+                        conversationManager: conversationManager,
                         isPresented: $showSidePanel
                     )
-                    .frame(width: sidePanelView == .settings ? geometry.size.width : geometry.size.width * 0.85)
-                    .transition(.move(edge: .leading))
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
                 }
             }
-            .animation(.easeOut(duration: 0.3), value: showSidePanel)
-            .animation(.easeInOut(duration: 0.3), value: sidePanelView)
-            .overlay(
-                // Invisible edge swipe area
-                HStack {
-                    // Left edge for opening sidebar
-                    Color.clear
-                        .frame(width: 30)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 20)
-                                .onEnded { value in
-                                    if value.translation.width > 50 && !showSidePanel {
-                                        withAnimation {
-                                            sidePanelView = .navigation
-                                            showSidePanel = true
-                                        }
-                                    }
-                                }
-                        )
-                    
-                    Spacer()
-                        .allowsHitTesting(false) // Allow taps to pass through
-                }
-                .allowsHitTesting(!showSidePanel) // Only intercept when sidebar is closed
-            )
-            .simultaneousGesture(
-                // Global gesture for closing sidebar
-                DragGesture(minimumDistance: 20)
-                    .onEnded { value in
-                        // Swipe from right to left to close side panel
-                        if value.translation.width < -100 && showSidePanel {
-                            withAnimation {
-                                showSidePanel = false
-                            }
-                        }
-                    }
-            )
         }
         .onAppear {
             // Load saved server address
@@ -878,6 +865,187 @@ struct ChatHistoryView: View {
     }
 }
 
+// New sheet-style conversation history view
+struct ChatHistorySheetView: View {
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var isPresented: Bool
+    @State private var searchText = ""
+    
+    private var filteredConversations: [Conversation] {
+        if searchText.isEmpty {
+            return conversationManager.conversationHistory
+        }
+        return conversationManager.conversationHistory.filter { conversation in
+            conversation.messages.contains { message in
+                message.content.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    private var shouldShowCurrentConversation: Bool {
+        guard !conversationManager.currentConversation.messages.isEmpty else {
+            return false
+        }
+        
+        if searchText.isEmpty {
+            return true
+        }
+        
+        return conversationManager.currentConversation.messages.contains { message in
+            message.content.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(UIColor.systemBackground).ignoresSafeArea()
+                
+                VStack(spacing: 0) {
+                    // Search bar at top
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        TextField("Search", text: $searchText)
+                    }
+                    .padding()
+                    .background(Color(UIColor.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+                    
+                    // Conversations List
+                    if conversationManager.conversationHistory.isEmpty && conversationManager.currentConversation.messages.isEmpty {
+                        VStack(spacing: 16) {
+                            Spacer()
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 60))
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text("No conversations")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                            Text("Start a conversation to see it here")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary.opacity(0.8))
+                            Spacer()
+                        }
+                    } else if !searchText.isEmpty && !shouldShowCurrentConversation && filteredConversations.isEmpty {
+                        // Show "no results" when searching
+                        VStack(spacing: 16) {
+                            Spacer()
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 60))
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text("No results found")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                            Text("Try a different search term")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary.opacity(0.8))
+                            Spacer()
+                        }
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                // Section header
+                                HStack {
+                                    Text(searchText.isEmpty ? "Recents" : "Search Results")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                
+                                // Current conversation if it has messages and matches search
+                                if shouldShowCurrentConversation {
+                                    ConversationSheetRow(
+                                        conversation: conversationManager.currentConversation,
+                                        conversationManager: conversationManager,
+                                        isPresented: $isPresented,
+                                        isCurrent: true
+                                    )
+                                }
+                                
+                                // History (filtered)
+                                ForEach(filteredConversations) { conversation in
+                                    ConversationSheetRow(
+                                        conversation: conversation,
+                                        conversationManager: conversationManager,
+                                        isPresented: $isPresented,
+                                        isCurrent: false
+                                    )
+                                }
+                            }
+                            .padding(.bottom, 20)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Conversations")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        isPresented = false
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ConversationSheetRow: View {
+    let conversation: Conversation
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var isPresented: Bool
+    let isCurrent: Bool
+    
+    private var previewText: String {
+        if let firstMessage = conversation.messages.first(where: { $0.isUser }) {
+            return firstMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return "Empty conversation"
+    }
+    
+    private var formattedDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: conversation.createdAt, relativeTo: Date())
+    }
+    
+    var body: some View {
+        Button(action: {
+            if !isCurrent {
+                conversationManager.loadConversation(conversation)
+            }
+            isPresented = false
+        }) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(previewText)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                Text(formattedDate)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(Color(UIColor.systemBackground))
+        }
+        .buttonStyle(PlainButtonStyle())
+        Divider()
+            .padding(.leading, 20)
+    }
+}
+
 struct ConversationHistoryRow: View {
     let conversation: Conversation
     @ObservedObject var conversationManager: ConversationManager
@@ -976,115 +1144,285 @@ struct NavigationSidebarView: View {
     @Binding var currentView: SidePanelContentView
     @Binding var isPresented: Bool
     @State private var searchText = ""
-    @State private var projects = ["New project", "ApexIQ", "open Access labs"]
+    @State private var projects = ["New project"]
+    
+    private var filteredConversations: [Conversation] {
+        if searchText.isEmpty {
+            return conversationManager.conversationHistory
+        }
+        return conversationManager.conversationHistory.filter { conversation in
+            conversation.messages.contains { message in
+                message.content.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    private var shouldShowCurrentConversation: Bool {
+        guard !conversationManager.currentConversation.messages.isEmpty else {
+            return false
+        }
+        
+        if searchText.isEmpty {
+            return true
+        }
+        
+        return conversationManager.currentConversation.messages.contains { message in
+            message.content.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    private var isSearching: Bool {
+        !searchText.isEmpty
+    }
     
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header with close button
-                HStack {
-                    Text("Navigation")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button(action: { isPresented = false }) {
-                        Image(systemName: "xmark")
-                            .font(.title3)
+                // Search Bar and New Chat Button
+                HStack(spacing: 8) {
+                    // Search Bar - Takes more width
+                    HStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.gray)
+                            .font(.system(size: 16))
+                        
+                        TextField("Search", text: $searchText)
                             .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
+                            .font(.system(size: 17))
                     }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-                
-                // Search Bar
-                HStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.gray)
-                        .font(.system(size: 16))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(10)
                     
-                    TextField("Search", text: $searchText)
-                        .foregroundColor(.white)
-                        .font(.system(size: 17))
+                    // New Chat Button - Smaller and more compact
+                    Button(action: { 
+                        conversationManager.newConversation()
+                        isPresented = false
+                    }) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(10)
+                    }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.1))
-                .cornerRadius(12)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                .padding(.top, 60)
+                .padding(.bottom, 20)
                 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Atlas
-                        NavItem(icon: "brain.head.profile", title: "Atlas") {
-                            isPresented = false
-                        }
-                        
-                        // Library
-                        NavItem(icon: "books.vertical", title: "Library") {
-                            // Handle library tap
-                        }
-                        
-                        // Pinned Apps
-                        NavItem(icon: "note.text", title: "Notes") {
-                            // Handle Notes tap
-                        }
-                        
-                        NavItem(icon: "chevron.left.forwardslash.chevron.right", title: "Codex") {
-                            // Handle Codex tap
-                        }
-                        
-                        // Divider
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 8)
-                        
-                        // Projects
-                        ForEach(projects, id: \.self) { project in
-                            NavItem(icon: "folder", title: project) {
-                                // Handle project tap
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Only show main navigation items when not searching
+                        if !isSearching {
+                            // Main Navigation Items - Grouped
+                            VStack(spacing: 0) {
+                                NavItem(icon: "sparkles", title: "Atlas", isFirst: true) {
+                                    isPresented = false
+                                }
+                                
+                                NavItem(icon: "book", title: "Library") {
+                                    // Handle library tap
+                                }
+                                
+                                NavItem(icon: "clock", title: "Codex", isLast: true) {
+                                    // Handle Codex tap
+                                }
                             }
-                        }
-                        
-                        // Chat History
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 8)
-                        
-                        NavItem(icon: "bubble.left.and.bubble.right", title: "Chat History") {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                currentView = .chatHistory
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 16)
+                            
+                            // Projects Section - Grouped
+                            VStack(spacing: 0) {
+                                ForEach(Array(projects.enumerated()), id: \.element) { index, project in
+                                    NavItem(
+                                        icon: "folder",
+                                        title: project,
+                                        isFirst: index == 0,
+                                        isLast: index == projects.count - 1
+                                    ) {
+                                        // Handle project tap
+                                    }
+                                }
                             }
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 16)
                         }
                         
-                        // Settings
-                        NavItem(icon: "gearshape", title: "Settings") {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                currentView = .settings
+                        // Show search results or conversation history
+                        if isSearching && !shouldShowCurrentConversation && filteredConversations.isEmpty {
+                            // No results found
+                            VStack(spacing: 16) {
+                                Spacer()
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.white.opacity(0.3))
+                                Text("No results found")
+                                    .font(.body)
+                                    .foregroundColor(.white.opacity(0.6))
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                        } else {
+                            // Conversation History - Ungrouped, just a list
+                            VStack(alignment: .leading, spacing: 8) {
+                                // Show section header when searching
+                                if isSearching {
+                                    Text("Search Results")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .padding(.horizontal, 16)
+                                        .padding(.top, 8)
+                                }
+                                
+                                // Current Conversation (if it has messages and matches search)
+                                if shouldShowCurrentConversation {
+                                    ConversationNavItem(
+                                        conversation: conversationManager.currentConversation,
+                                        conversationManager: conversationManager,
+                                        isPresented: $isPresented,
+                                        isCurrent: true
+                                    )
+                                    .padding(.horizontal, 16)
+                                }
+                                
+                                // Conversation History (filtered)
+                                ForEach(filteredConversations) { conversation in
+                                    ConversationNavItem(
+                                        conversation: conversation,
+                                        conversationManager: conversationManager,
+                                        isPresented: $isPresented,
+                                        isCurrent: false
+                                    )
+                                    .padding(.horizontal, 16)
+                                }
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.bottom, 20)
                 }
                 
-                Spacer()
+                // Bottom Settings Button
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        currentView = .settings
+                    }
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                        
+                        Text("Settings")
+                            .font(.system(size: 15))
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
+    }
+}
+
+struct ConversationNavItem: View {
+    let conversation: Conversation
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var isPresented: Bool
+    let isCurrent: Bool
+    @State private var offset: CGFloat = 0
+    
+    private var previewText: String {
+        if let firstMessage = conversation.messages.first(where: { $0.isUser }) {
+            let text = firstMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? "Empty conversation" : text
+        }
+        return "Empty conversation"
+    }
+    
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Delete button (revealed on swipe)
+            Button(action: {
+                withAnimation {
+                    if !isCurrent {
+                        conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
+                    } else {
+                        conversationManager.newConversation()
+                    }
+                    offset = 0
+                }
+            }) {
+                HStack {
+                    Spacer()
+                    Image(systemName: "trash.fill")
+                        .foregroundColor(.white)
+                        .frame(width: 70, alignment: .center)
+                }
+                .frame(maxHeight: .infinity)
+                .background(Color.red)
+            }
+            
+            // Main conversation item - simple text button
+            Button(action: {
+                if !isCurrent {
+                    conversationManager.loadConversation(conversation)
+                }
+                isPresented = false
+            }) {
+                Text(previewText)
+                    .font(.system(size: 15))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .background(Color.black)
+            .offset(x: offset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if value.translation.width < 0 {
+                            offset = max(value.translation.width, -70)
+                        } else if offset < 0 {
+                            offset = min(value.translation.width + offset, 0)
+                        }
+                    }
+                    .onEnded { value in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            if value.translation.width < -50 && offset > -35 {
+                                offset = -70
+                            } else if value.translation.width > 50 || (offset < 0 && value.translation.width > 0) {
+                                offset = 0
+                            } else if offset < -35 {
+                                offset = -70
+                            } else {
+                                offset = 0
+                            }
+                        }
+                    }
+            )
+        }
+        .clipped()
     }
 }
 
 struct NavItem: View {
     let icon: String
     let title: String
+    var isFirst: Bool = false
+    var isLast: Bool = false
     let action: () -> Void
     
     var body: some View {
@@ -1096,17 +1434,30 @@ struct NavItem: View {
                     .frame(width: 24)
                 
                 Text(title)
-                    .font(.system(size: 17))
+                    .font(.system(size: 15))
                     .foregroundColor(.white)
                 
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color.clear)
-            .cornerRadius(8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .overlay(
+            // Add subtle divider between items (not on last item)
+            Group {
+                if !isLast {
+                    VStack {
+                        Spacer()
+                        Rectangle()
+                            .fill(Color.white.opacity(0.05))
+                            .frame(height: 0.5)
+                            .padding(.leading, 56) // Indent to align with text
+                    }
+                }
+            }
+        )
     }
 }
 
