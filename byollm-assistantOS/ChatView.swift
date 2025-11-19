@@ -1004,6 +1004,7 @@ struct ConversationSheetRow: View {
     @ObservedObject var conversationManager: ConversationManager
     @Binding var isPresented: Bool
     let isCurrent: Bool
+    @State private var offset: CGFloat = 0
     
     private var previewText: String {
         if let firstMessage = conversation.messages.first(where: { $0.isUser }) {
@@ -1019,30 +1020,99 @@ struct ConversationSheetRow: View {
     }
     
     var body: some View {
-        Button(action: {
-            if !isCurrent {
-                conversationManager.loadConversation(conversation)
-            }
-            isPresented = false
-        }) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(previewText)
-                    .font(.body)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(spacing: 0) {
+            ZStack(alignment: .trailing) {
+                // Main conversation row - placed FIRST so it's behind
+                Button(action: {
+                    // Only respond to tap if not swiped
+                    if offset == 0 {
+                        if !isCurrent {
+                            conversationManager.loadConversation(conversation)
+                        }
+                        isPresented = false
+                    } else {
+                        // Close the swipe if open
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            offset = 0
+                        }
+                    }
+                }) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(previewText)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Text(formattedDate)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .background(Color(UIColor.systemBackground))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .zIndex(1)
+                .offset(x: offset)
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { value in
+                            if value.translation.width < 0 {
+                                offset = max(value.translation.width, -80)
+                            } else if offset < 0 {
+                                offset = min(value.translation.width + offset, 0)
+                            }
+                        }
+                        .onEnded { value in
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if value.translation.width < -40 && offset > -40 {
+                                    offset = -80
+                                } else if value.translation.width > 40 || (offset < 0 && value.translation.width > 0) {
+                                    offset = 0
+                                } else if offset < -40 {
+                                    offset = -80
+                                } else {
+                                    offset = 0
+                                }
+                            }
+                        }
+                )
                 
-                Text(formattedDate)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                // Delete button background (revealed on swipe) - behind the main row
+                if offset < 0 {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation {
+                                if !isCurrent {
+                                    conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
+                                } else {
+                                    conversationManager.newConversation()
+                                }
+                                offset = 0
+                            }
+                        }) {
+                            VStack {
+                                Image(systemName: "trash.fill")
+                                    .foregroundColor(.white)
+                                    .font(.title3)
+                            }
+                            .frame(width: 80)
+                            .frame(maxHeight: .infinity)
+                            .background(Color.red)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .zIndex(0)
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(Color(UIColor.systemBackground))
+            .clipped()
+            
+            Divider()
+                .padding(.leading, 20)
         }
-        .buttonStyle(PlainButtonStyle())
-        Divider()
-            .padding(.leading, 20)
     }
 }
 
@@ -1050,6 +1120,7 @@ struct ConversationHistoryRow: View {
     let conversation: Conversation
     @ObservedObject var conversationManager: ConversationManager
     @Binding var isPresented: Bool
+    @State private var offset: CGFloat = 0
     
     private var previewText: String {
         if let firstMessage = conversation.messages.first {
@@ -1069,39 +1140,102 @@ struct ConversationHistoryRow: View {
     }
     
     var body: some View {
-        Button(action: {
-            conversationManager.loadConversation(conversation)
-            isPresented = false
-        }) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(formattedDate)
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 4) {
-                        Image(systemName: "bubble.left.and.bubble.right")
-                            .font(.caption2)
-                        Text("\(messageCount)")
-                            .font(.caption)
+        ZStack(alignment: .trailing) {
+            // Main conversation row - placed FIRST
+            Button(action: {
+                // Only load conversation if not swiped
+                if offset == 0 {
+                    conversationManager.loadConversation(conversation)
+                    isPresented = false
+                } else {
+                    // Close the swipe if open
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        offset = 0
                     }
-                    .foregroundColor(.white.opacity(0.5))
                 }
-                
-                Text(previewText)
-                    .font(.body)
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+            }) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(formattedDate)
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.6))
+                        
+                        Spacer()
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.caption2)
+                            Text("\(messageCount)")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.white.opacity(0.5))
+                    }
+                    
+                    Text(previewText)
+                        .font(.body)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(12)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(PlainButtonStyle())
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.1))
-            .cornerRadius(12)
+            .zIndex(1)
+            .offset(x: offset)
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 10)
+                    .onChanged { value in
+                        if value.translation.width < 0 {
+                            offset = max(value.translation.width, -70)
+                        } else if offset < 0 {
+                            offset = min(value.translation.width + offset, 0)
+                        }
+                    }
+                    .onEnded { value in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            if value.translation.width < -35 && offset > -35 {
+                                offset = -70
+                            } else if value.translation.width > 35 || (offset < 0 && value.translation.width > 0) {
+                                offset = 0
+                            } else if offset < -35 {
+                                offset = -70
+                            } else {
+                                offset = 0
+                            }
+                        }
+                    }
+            )
+            
+            // Delete button (revealed on swipe) - only show when offset is negative
+            if offset < 0 {
+                HStack {
+                    Spacer()
+                    VStack {
+                        Image(systemName: "trash.fill")
+                            .foregroundColor(.white)
+                            .font(.title3)
+                    }
+                    .frame(width: 70)
+                    .frame(maxHeight: .infinity)
+                    .background(Color.red)
+                    .cornerRadius(12)
+                    .onTapGesture {
+                        withAnimation {
+                            conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
+                            offset = 0
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .zIndex(0)
+            }
         }
-        .buttonStyle(PlainButtonStyle())
+        .clipped()
     }
 }
 
@@ -1351,33 +1485,20 @@ struct ConversationNavItem: View {
     
     var body: some View {
         ZStack(alignment: .trailing) {
-            // Delete button (revealed on swipe)
+            // Main conversation item - simple text button - placed FIRST
             Button(action: {
-                withAnimation {
+                // Only load conversation if not swiped
+                if offset == 0 {
                     if !isCurrent {
-                        conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
-                    } else {
-                        conversationManager.newConversation()
+                        conversationManager.loadConversation(conversation)
                     }
-                    offset = 0
+                    isPresented = false
+                } else {
+                    // Close the swipe if open
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        offset = 0
+                    }
                 }
-            }) {
-                HStack {
-                    Spacer()
-                    Image(systemName: "trash.fill")
-                        .foregroundColor(.white)
-                        .frame(width: 70, alignment: .center)
-                }
-                .frame(maxHeight: .infinity)
-                .background(Color.red)
-            }
-            
-            // Main conversation item - simple text button
-            Button(action: {
-                if !isCurrent {
-                    conversationManager.loadConversation(conversation)
-                }
-                isPresented = false
             }) {
                 Text(previewText)
                     .font(.system(size: 15))
@@ -1386,12 +1507,14 @@ struct ConversationNavItem: View {
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
             .background(Color.black)
+            .zIndex(1)
             .offset(x: offset)
-            .gesture(
-                DragGesture()
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 10)
                     .onChanged { value in
                         if value.translation.width < 0 {
                             offset = max(value.translation.width, -70)
@@ -1401,9 +1524,9 @@ struct ConversationNavItem: View {
                     }
                     .onEnded { value in
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            if value.translation.width < -50 && offset > -35 {
+                            if value.translation.width < -35 && offset > -35 {
                                 offset = -70
-                            } else if value.translation.width > 50 || (offset < 0 && value.translation.width > 0) {
+                            } else if value.translation.width > 35 || (offset < 0 && value.translation.width > 0) {
                                 offset = 0
                             } else if offset < -35 {
                                 offset = -70
@@ -1413,6 +1536,31 @@ struct ConversationNavItem: View {
                         }
                     }
             )
+            
+            // Delete button (revealed on swipe) - only show when offset is negative
+            if offset < 0 {
+                HStack {
+                    Spacer()
+                    VStack {
+                        Image(systemName: "trash.fill")
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 70)
+                    .frame(maxHeight: .infinity)
+                    .background(Color.red)
+                    .onTapGesture {
+                        withAnimation {
+                            if !isCurrent {
+                                conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
+                            } else {
+                                conversationManager.newConversation()
+                            }
+                            offset = 0
+                        }
+                    }
+                }
+                .zIndex(0)
+            }
         }
         .clipped()
     }
