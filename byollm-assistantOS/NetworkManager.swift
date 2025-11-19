@@ -19,10 +19,22 @@ struct ChatRequest: Codable {
     let temperature: Double?
     let maxTokens: Int?
     let stream: Bool
+    let safetyLevel: String?
     
     enum CodingKeys: String, CodingKey {
         case model, messages, temperature, stream
         case maxTokens = "max_tokens"
+        case safetyLevel = "safety_level"
+    }
+    
+    // Initialize without max_tokens by setting it to nil
+    init(model: String, messages: [ChatMessage], temperature: Double?, stream: Bool, safetyLevel: String?) {
+        self.model = model
+        self.messages = messages
+        self.temperature = temperature
+        self.maxTokens = nil  // Remove token limit
+        self.stream = stream
+        self.safetyLevel = safetyLevel
     }
 }
 
@@ -174,8 +186,8 @@ class NetworkManager {
         model: String,
         messages: [ChatMessage],
         systemPrompt: String? = nil,
-        temperature: Double = 0.7,
-        maxTokens: Int = 1024
+        safetyLevel: String? = nil,
+        temperature: Double = 0.7
     ) async throws -> String {
         var urlString = serverAddress
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
@@ -202,8 +214,8 @@ class NetworkManager {
             model: model,
             messages: allMessages,
             temperature: temperature,
-            maxTokens: maxTokens,
-            stream: false
+            stream: false,
+            safetyLevel: safetyLevel
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -233,8 +245,8 @@ class NetworkManager {
         model: String,
         messages: [ChatMessage],
         systemPrompt: String? = nil,
+        safetyLevel: String? = nil,
         temperature: Double = 0.7,
-        maxTokens: Int = 1024,
         onChunk: @escaping (String) -> Void
     ) async throws {
         var urlString = serverAddress
@@ -262,8 +274,8 @@ class NetworkManager {
             model: model,
             messages: allMessages,
             temperature: temperature,
-            maxTokens: maxTokens,
-            stream: true
+            stream: true,
+            safetyLevel: safetyLevel
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -278,15 +290,27 @@ class NetworkManager {
             throw NetworkError.serverError(statusCode: httpResponse.statusCode)
         }
         
-        var buffer = ""
+        var buffer = Data()
+        var stringBuffer = ""
         
         for try await byte in asyncBytes {
-            buffer.append(Character(UnicodeScalar(byte)))
+            buffer.append(byte)
+            
+            // Try to decode accumulated bytes as UTF-8 string
+            // Use lossy decoding to handle incomplete sequences gracefully
+            if let decodedString = String(bytes: buffer, encoding: .utf8) {
+                stringBuffer += decodedString
+                buffer.removeAll()
+            } else if buffer.count > 4 {
+                // If buffer is getting too large without valid UTF-8, use lossy conversion
+                stringBuffer += String(decoding: buffer, as: UTF8.self)
+                buffer.removeAll()
+            }
             
             // Process complete lines
-            while let newlineIndex = buffer.firstIndex(of: "\n") {
-                let line = String(buffer[..<newlineIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
-                buffer.removeSubrange(...newlineIndex)
+            while let newlineIndex = stringBuffer.firstIndex(of: "\n") {
+                let line = String(stringBuffer[..<newlineIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+                stringBuffer.removeSubrange(...newlineIndex)
                 
                 // Skip empty lines
                 guard !line.isEmpty else { continue }
@@ -309,6 +333,34 @@ class NetworkManager {
                         } catch {
                             // Skip malformed JSON chunks
                             print("Failed to parse chunk: \(error)")
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Process any remaining buffered data
+        if !buffer.isEmpty {
+            stringBuffer += String(decoding: buffer, as: UTF8.self)
+        }
+        
+        // Process any remaining lines in string buffer
+        if !stringBuffer.isEmpty {
+            let remainingLines = stringBuffer.components(separatedBy: .newlines)
+            for line in remainingLines {
+                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmedLine.isEmpty, trimmedLine != "data: [DONE]" else { continue }
+                
+                if trimmedLine.hasPrefix("data: ") {
+                    let jsonString = String(trimmedLine.dropFirst(6))
+                    if let jsonData = jsonString.data(using: .utf8) {
+                        do {
+                            let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
+                            if let content = streamResponse.choices.first?.delta.content {
+                                onChunk(content)
+                            }
+                        } catch {
+                            print("Failed to parse final chunk: \(error)")
                         }
                     }
                 }

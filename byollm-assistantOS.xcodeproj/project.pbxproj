@@ -29,14 +29,37 @@
 		AF32B4B02ECAAA8A0037643D /* byollm-assistantOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "byollm-assistantOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AFF145102ECBFE0F006ECF94 /* Exceptions for "byollm-assistantOSTests" folder in "byollm-assistantOSTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AF32B4A52ECAAA8A0037643D /* byollm-assistantOSTests */;
+		};
+		AFF145122ECBFE2E006ECF94 /* Exceptions for "byollm-assistantOS" folder in "byollm-assistantOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AF32B4982ECAAA880037643D /* byollm-assistantOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AF32B49B2ECAAA890037643D /* byollm-assistantOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AFF145122ECBFE2E006ECF94 /* Exceptions for "byollm-assistantOS" folder in "byollm-assistantOS" target */,
+			);
 			path = "byollm-assistantOS";
 			sourceTree = "<group>";
 		};
 		AF32B4A92ECAAA8A0037643D /* byollm-assistantOSTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AFF145102ECBFE0F006ECF94 /* Exceptions for "byollm-assistantOSTests" folder in "byollm-assistantOSTests" target */,
+			);
 			path = "byollm-assistantOSTests";
 			sourceTree = "<group>";
 		};
@@ -400,6 +423,7 @@
 				DEVELOPMENT_TEAM = RA5ZRTAX47;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "byollm-assistantOS/Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -428,6 +452,7 @@
 				DEVELOPMENT_TEAM = RA5ZRTAX47;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "byollm-assistantOS/Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -454,6 +479,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = RA5ZRTAX47;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "byollm-assistantOSTests/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOSTests";
@@ -473,6 +499,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = RA5ZRTAX47;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "byollm-assistantOSTests/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "openaccesslabs.byollm-assistantOSTests";

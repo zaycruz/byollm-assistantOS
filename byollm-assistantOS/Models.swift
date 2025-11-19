@@ -10,12 +10,14 @@ import Foundation
 struct Message: Identifiable, Equatable, Codable {
     let id: UUID
     let content: String
+    let thinkingContent: String?  // Stores thinking tokens separately
     let isUser: Bool
     let timestamp: Date
     
-    init(content: String, isUser: Bool, timestamp: Date) {
+    init(content: String, isUser: Bool, timestamp: Date, thinkingContent: String? = nil) {
         self.id = UUID()
         self.content = content
+        self.thinkingContent = thinkingContent
         self.isUser = isUser
         self.timestamp = timestamp
     }
@@ -40,6 +42,7 @@ struct Conversation: Identifiable, Codable {
     }
 }
 
+@MainActor
 class ConversationManager: ObservableObject {
     @Published var currentConversation: Conversation
     @Published var conversationHistory: [Conversation] = []
@@ -47,10 +50,74 @@ class ConversationManager: ObservableObject {
     var serverAddress: String?
     var systemPrompt: String?
     var selectedModel: String = "qwen2.5:latest"
+    var safetyLevel: String = "medium"
     
     init() {
         self.currentConversation = Conversation(messages: [], createdAt: Date())
         loadConversationHistory()
+    }
+    
+    // MARK: - Thinking Token Parsing
+    
+    /// Check if the current model supports thinking tokens (Qwen models)
+    private func shouldParseThinkingTokens() -> Bool {
+        let modelLower = selectedModel.lowercased()
+        return modelLower.contains("qwen") || modelLower.contains("qwq")
+    }
+    
+    /// Parses response to separate thinking tokens from actual content
+    /// Supports multiple formats: <think>, <thinking>, and similar tags
+    private func parseThinkingTokens(from response: String) -> (thinking: String?, content: String) {
+        // Only parse thinking tokens for Qwen models
+        guard shouldParseThinkingTokens() else {
+            print("⏭️ Skipping thinking token parsing (not a Qwen model)")
+            return (thinking: nil, content: response)
+        }
+        
+        print("🔍 Attempting to parse thinking tokens from response (\(response.count) chars)")
+        print("📝 First 200 chars: \(response.prefix(200))")
+        
+        var cleanedResponse = response
+        var thinkingContent: String? = nil
+        
+        // Pattern 1: <think>...</think> or <thinking>...</thinking>
+        let thinkPatterns = [
+            #"<think>(.*?)</think>"#,
+            #"<thinking>(.*?)</thinking>"#,
+            #"<THINK>(.*?)</THINK>"#,
+            #"<THINKING>(.*?)</THINKING>"#
+        ]
+        
+        for pattern in thinkPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive]) {
+                let nsRange = NSRange(cleanedResponse.startIndex..<cleanedResponse.endIndex, in: cleanedResponse)
+                
+                if let match = regex.firstMatch(in: cleanedResponse, options: [], range: nsRange) {
+                    print("✅ Found thinking tokens with pattern: \(pattern)")
+                    
+                    // Extract thinking content
+                    if let thinkRange = Range(match.range(at: 1), in: cleanedResponse) {
+                        thinkingContent = String(cleanedResponse[thinkRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                        print("💭 Extracted thinking content: \(thinkingContent?.count ?? 0) chars")
+                    }
+                    
+                    // Remove thinking tags from response
+                    if let fullRange = Range(match.range, in: cleanedResponse) {
+                        cleanedResponse.removeSubrange(fullRange)
+                        cleanedResponse = cleanedResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+                        print("✂️ Cleaned response: \(cleanedResponse.count) chars")
+                    }
+                    
+                    break
+                }
+            }
+        }
+        
+        if thinkingContent == nil {
+            print("❌ No thinking tokens found in response")
+        }
+        
+        return (thinking: thinkingContent, content: cleanedResponse)
     }
     
     // MARK: - Persistence
@@ -127,12 +194,16 @@ class ConversationManager: ObservableObject {
         Task {
             do {
                 // Convert conversation messages to API format (excluding the placeholder)
+                // For assistant messages, we send only the content without thinking tags
+                // (thinking is internal to the model and shouldn't be in conversation history)
                 let apiMessages = currentConversation.messages.prefix(currentConversation.messages.count - 1).map { message in
                     ChatMessage(
                         role: message.isUser ? "user" : "assistant",
-                        content: message.content
+                        content: message.content  // Content is already cleaned (thinking removed)
                     )
                 }
+                
+                print("📤 Sending \(apiMessages.count) messages to API")
                 
                 var accumulatedResponse = ""
                 
@@ -142,54 +213,82 @@ class ConversationManager: ObservableObject {
                     model: selectedModel,
                     messages: Array(apiMessages),
                     systemPrompt: systemPrompt,
-                    temperature: 0.7,
-                    maxTokens: 1024
+                    safetyLevel: safetyLevel,
+                    temperature: 0.7
                 ) { chunk in
                     // Accumulate the chunks and update the message on the main thread
                     accumulatedResponse += chunk
                     
+                    // Debug: Log chunk and accumulated length
+                    print("📦 Chunk received (\(chunk.count) chars), total accumulated: \(accumulatedResponse.count) chars")
+                    
+                    // Capture the current response to avoid data race
+                    let currentResponse = accumulatedResponse
+                    
                     Task { @MainActor in
-                        // Update the message content
+                        // For Qwen models, show the raw accumulated response during streaming
+                        // We'll parse thinking tokens at the end to avoid cutting off incomplete tags
                         if messageIndex < self.currentConversation.messages.count {
-                            self.currentConversation.messages[messageIndex] = Message(
-                                content: accumulatedResponse,
-                                isUser: false,
-                                timestamp: self.currentConversation.messages[messageIndex].timestamp
-                            )
+                            if self.shouldParseThinkingTokens() {
+                                // During streaming, show everything (including incomplete tags)
+                                // This prevents truncation and shows the thinking process in real-time
+                                self.currentConversation.messages[messageIndex] = Message(
+                                    content: currentResponse,
+                                    isUser: false,
+                                    timestamp: self.currentConversation.messages[messageIndex].timestamp,
+                                    thinkingContent: nil
+                                )
+                            } else {
+                                // For non-Qwen models, just show the content normally
+                                self.currentConversation.messages[messageIndex] = Message(
+                                    content: currentResponse,
+                                    isUser: false,
+                                    timestamp: self.currentConversation.messages[messageIndex].timestamp,
+                                    thinkingContent: nil
+                                )
+                            }
                         }
                     }
                 }
                 
-                await MainActor.run {
-                    self.isLoading = false
-                    self.saveConversationHistory()
+                // After streaming is complete, parse thinking tokens
+                print("✅ Streaming complete! Total response: \(accumulatedResponse.count) chars")
+                print("📄 Full response preview: \(accumulatedResponse.prefix(500))")
+                
+                let finalParsed = self.parseThinkingTokens(from: accumulatedResponse)
+                if messageIndex < self.currentConversation.messages.count {
+                    self.currentConversation.messages[messageIndex] = Message(
+                        content: finalParsed.content,
+                        isUser: false,
+                        timestamp: self.currentConversation.messages[messageIndex].timestamp,
+                        thinkingContent: finalParsed.thinking
+                    )
                 }
+                
+                self.isLoading = false
+                self.saveConversationHistory()
             } catch let error as NetworkManager.NetworkError {
-                await MainActor.run {
-                    // Replace the placeholder with an error message
-                    if messageIndex < self.currentConversation.messages.count {
-                        self.currentConversation.messages[messageIndex] = Message(
-                            content: "❌ Error: \(error.localizedDescription ?? "Unknown error")\n\nPlease check your server connection and try again.",
-                            isUser: false,
-                            timestamp: self.currentConversation.messages[messageIndex].timestamp
-                        )
-                    }
-                    self.isLoading = false
-                    self.saveConversationHistory()
+                // Replace the placeholder with an error message
+                if messageIndex < self.currentConversation.messages.count {
+                    self.currentConversation.messages[messageIndex] = Message(
+                        content: "❌ Error: \(error.localizedDescription ?? "Unknown error")\n\nPlease check your server connection and try again.",
+                        isUser: false,
+                        timestamp: self.currentConversation.messages[messageIndex].timestamp
+                    )
                 }
+                self.isLoading = false
+                self.saveConversationHistory()
             } catch {
-                await MainActor.run {
-                    // Replace the placeholder with an error message
-                    if messageIndex < self.currentConversation.messages.count {
-                        self.currentConversation.messages[messageIndex] = Message(
-                            content: "❌ Unexpected error: \(error.localizedDescription)\n\nPlease try again.",
-                            isUser: false,
-                            timestamp: self.currentConversation.messages[messageIndex].timestamp
-                        )
-                    }
-                    self.isLoading = false
-                    self.saveConversationHistory()
+                // Replace the placeholder with an error message
+                if messageIndex < self.currentConversation.messages.count {
+                    self.currentConversation.messages[messageIndex] = Message(
+                        content: "❌ Unexpected error: \(error.localizedDescription)\n\nPlease try again.",
+                        isUser: false,
+                        timestamp: self.currentConversation.messages[messageIndex].timestamp
+                    )
                 }
+                self.isLoading = false
+                self.saveConversationHistory()
             }
         }
     }
