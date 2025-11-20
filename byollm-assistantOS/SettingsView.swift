@@ -18,7 +18,6 @@ struct SettingsView: View {
     @Binding var safetyLevel: ChatView.SafetyLevel
     @State private var showingDeleteAlert = false
     @State private var showingPersonalization = false
-    @State private var showingManageModels = false
     @State private var editingServerAddress: String = ""
     @State private var connectionStatus: ConnectionStatus = .disconnected
     @State private var isTestingConnection = false
@@ -114,48 +113,6 @@ struct SettingsView: View {
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Siri Shortcuts Card
-                        HStack(spacing: 16) {
-                            Image(systemName: "ellipsis.curlybraces")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 50, height: 50)
-                                .background(
-                                    LinearGradient(colors: [.pink, .orange, .yellow, .green, .blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                )
-                                .cornerRadius(12)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Siri Shortcuts")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                Text("Ask a question using your voice with Siri. Activate Siri and say ")
-                                    .foregroundColor(.gray)
-                                    .font(.subheadline)
-                                + Text("\"Hey Locally AI\"")
-                                    .foregroundColor(.white)
-                                    .fontWeight(.semibold)
-                                    .font(.subheadline)
-                                + Text(" to ask.")
-                                    .foregroundColor(.gray)
-                                    .font(.subheadline)
-                            }
-                            
-                            Spacer()
-                            
-                            Button(action: {}) {
-                                Image(systemName: "xmark")
-                                    .foregroundColor(.gray)
-                                    .frame(width: 32, height: 32)
-                                    .background(Color.white.opacity(0.1))
-                                    .clipShape(Circle())
-                            }
-                        }
-                        .padding()
-                        .background(Color.white.opacity(0.05))
-                        .cornerRadius(16)
-                        .padding(.horizontal, 20)
-                        
                         // Server Connection Section
                         VStack(alignment: .leading, spacing: 0) {
                             Text("Server Connection")
@@ -279,18 +236,6 @@ struct SettingsView: View {
                                 .padding(.bottom, 12)
                             
                             VStack(spacing: 0) {
-                                Button(action: { showingManageModels = true }) {
-                                    SettingsRow(
-                                        icon: "server.rack",
-                                        title: "Manage models",
-                                        showChevron: true
-                                    )
-                                }
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
                                 Button(action: { showingPersonalization = true }) {
                                     SettingsRow(
                                         icon: "person.circle",
@@ -467,9 +412,6 @@ struct SettingsView: View {
                 selectedTheme: $selectedTheme,
                 selectedFontStyle: $selectedFontStyle
             )
-        }
-        .fullScreenCover(isPresented: $showingManageModels) {
-            ManageModelsView()
         }
     }
     

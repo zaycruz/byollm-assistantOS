@@ -20,21 +20,27 @@ struct ChatRequest: Codable {
     let maxTokens: Int?
     let stream: Bool
     let safetyLevel: String?
+    let reasoningEffort: String?
+    let conversationId: String?
     
     enum CodingKeys: String, CodingKey {
         case model, messages, temperature, stream
         case maxTokens = "max_tokens"
         case safetyLevel = "safety_level"
+        case reasoningEffort = "reasoning_effort"
+        case conversationId = "conversation_id"
     }
     
     // Initialize without max_tokens by setting it to nil
-    init(model: String, messages: [ChatMessage], temperature: Double?, stream: Bool, safetyLevel: String?) {
+    init(model: String, messages: [ChatMessage], temperature: Double?, stream: Bool, safetyLevel: String?, reasoningEffort: String? = nil, conversationId: String? = nil) {
         self.model = model
         self.messages = messages
         self.temperature = temperature
         self.maxTokens = nil  // Remove token limit
         self.stream = stream
         self.safetyLevel = safetyLevel
+        self.reasoningEffort = reasoningEffort
+        self.conversationId = conversationId
     }
 }
 
@@ -47,12 +53,23 @@ struct ChatResponse: Codable {
     
     struct Choice: Codable {
         let index: Int
-        let message: ChatMessage
+        let message: ResponseMessage
         let finishReason: String?
         
         enum CodingKeys: String, CodingKey {
             case index, message
             case finishReason = "finish_reason"
+        }
+    }
+    
+    struct ResponseMessage: Codable {
+        let role: String
+        let content: String
+        let reasoningContent: String?  // For GPT-oss thinking
+        
+        enum CodingKeys: String, CodingKey {
+            case role, content
+            case reasoningContent = "reasoning_content"
         }
     }
     
@@ -89,6 +106,12 @@ struct ChatStreamResponse: Codable {
     struct Delta: Codable {
         let role: String?
         let content: String?
+        let reasoningContent: String?  // For GPT-oss thinking
+        
+        enum CodingKeys: String, CodingKey {
+            case role, content
+            case reasoningContent = "reasoning_content"
+        }
     }
 }
 
@@ -187,7 +210,9 @@ class NetworkManager {
         messages: [ChatMessage],
         systemPrompt: String? = nil,
         safetyLevel: String? = nil,
-        temperature: Double = 0.7
+        temperature: Double = 0.7,
+        reasoningEffort: String? = nil,
+        conversationId: String? = nil
     ) async throws -> String {
         var urlString = serverAddress
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
@@ -215,10 +240,19 @@ class NetworkManager {
             messages: allMessages,
             temperature: temperature,
             stream: false,
-            safetyLevel: safetyLevel
+            safetyLevel: safetyLevel,
+            reasoningEffort: reasoningEffort,
+            conversationId: conversationId
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)
+        
+        // Debug: Print the actual JSON being sent
+        if let jsonData = request.httpBody,
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 Sending request to server:")
+            print(jsonString)
+        }
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
@@ -247,7 +281,10 @@ class NetworkManager {
         systemPrompt: String? = nil,
         safetyLevel: String? = nil,
         temperature: Double = 0.7,
-        onChunk: @escaping (String) -> Void
+        reasoningEffort: String? = nil,
+        conversationId: String? = nil,
+        onChunk: @escaping (String) -> Void,
+        onReasoningChunk: @escaping (String) -> Void = { _ in }
     ) async throws {
         var urlString = serverAddress
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
@@ -275,10 +312,19 @@ class NetworkManager {
             messages: allMessages,
             temperature: temperature,
             stream: true,
-            safetyLevel: safetyLevel
+            safetyLevel: safetyLevel,
+            reasoningEffort: reasoningEffort,
+            conversationId: conversationId
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)
+        
+        // Debug: Print the actual JSON being sent
+        if let jsonData = request.httpBody,
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 Sending streaming request to server:")
+            print(jsonString)
+        }
         
         let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
         
@@ -324,15 +370,29 @@ class NetworkManager {
                 if line.hasPrefix("data: ") {
                     let jsonString = String(line.dropFirst(6))
                     
+                    // Debug: Print raw JSON for first few chunks
+                    if jsonString.count < 500 {
+                        print("📦 Raw JSON chunk: \(jsonString)")
+                    }
+                    
                     if let jsonData = jsonString.data(using: .utf8) {
                         do {
                             let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
+                            
+                            // Handle reasoning content (for GPT-oss models)
+                            if let reasoningContent = streamResponse.choices.first?.delta.reasoningContent {
+                                print("🧠 Reasoning content chunk: \(reasoningContent.prefix(100))")
+                                onReasoningChunk(reasoningContent)
+                            }
+                            
+                            // Handle regular content
                             if let content = streamResponse.choices.first?.delta.content {
                                 onChunk(content)
                             }
                         } catch {
                             // Skip malformed JSON chunks
-                            print("Failed to parse chunk: \(error)")
+                            print("⚠️ Failed to parse chunk: \(error)")
+                            print("Failed JSON: \(jsonString)")
                         }
                     }
                 }
@@ -356,11 +416,19 @@ class NetworkManager {
                     if let jsonData = jsonString.data(using: .utf8) {
                         do {
                             let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
+                            
+                            // Handle reasoning content (for GPT-oss models)
+                            if let reasoningContent = streamResponse.choices.first?.delta.reasoningContent {
+                                print("🧠 Final reasoning content chunk: \(reasoningContent.prefix(100))")
+                                onReasoningChunk(reasoningContent)
+                            }
+                            
+                            // Handle regular content
                             if let content = streamResponse.choices.first?.delta.content {
                                 onChunk(content)
                             }
                         } catch {
-                            print("Failed to parse final chunk: \(error)")
+                            print("⚠️ Failed to parse final chunk: \(error)")
                         }
                     }
                 }

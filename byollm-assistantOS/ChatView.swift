@@ -18,13 +18,24 @@ struct ChatView: View {
     @State private var systemPrompt = ""
     @State private var selectedTheme: AppTheme = .ocean
     @State private var selectedFontStyle: FontStyle = .system
-    @State private var selectedModel = "qwen2.5:latest"
-    @State private var availableModels: [String] = ["qwen2.5:latest"]
+    @State private var selectedModel = "gpt-oss:latest"
+    @State private var availableModels: [String] = ["gpt-oss:latest"]
     @State private var safetyLevel: SafetyLevel = .medium
+    @State private var reasoningEffort: ReasoningEffort = .medium
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isInputFocused: Bool
     
     enum SafetyLevel: String, CaseIterable {
+        case low = "low"
+        case medium = "medium"
+        case high = "high"
+        
+        var displayName: String {
+            rawValue.capitalized
+        }
+    }
+    
+    enum ReasoningEffort: String, CaseIterable {
         case low = "low"
         case medium = "medium"
         case high = "high"
@@ -161,6 +172,32 @@ struct ChatView: View {
                                         }
                                     }
                                 }
+                                
+                                // Show reasoning effort submenu for GPT-oss models
+                                // Check the selectedModel directly instead of conversationManager
+                                if supportsReasoningEffort(for: selectedModel) {
+                                    Divider()
+                                    
+                                    Menu {
+                                        ForEach(ReasoningEffort.allCases, id: \.self) { effort in
+                                            Button(action: {
+                                                reasoningEffort = effort
+                                            }) {
+                                                HStack {
+                                                    Text(effort.displayName)
+                                                    if reasoningEffort == effort {
+                                                        Image(systemName: "checkmark")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "brain")
+                                            Text("Reasoning: \(reasoningEffort.displayName)")
+                                        }
+                                    }
+                                }
                             } label: {
                                 HStack(spacing: 6) {
                                     Text(formatModelName(selectedModel))
@@ -272,10 +309,22 @@ struct ChatView: View {
             }
         }
         .onAppear {
+            // Start with a fresh conversation on app launch
+            conversationManager.newConversation()
+            
             // Load saved server address
             if let savedAddress = UserDefaults.standard.string(forKey: "serverAddress") {
                 serverAddress = savedAddress
                 conversationManager.serverAddress = savedAddress
+            }
+            
+            // Load saved selected model
+            if let savedModel = UserDefaults.standard.string(forKey: "selectedModel") {
+                selectedModel = savedModel
+                conversationManager.selectedModel = savedModel
+            } else {
+                // Sync the default selected model to conversation manager
+                conversationManager.selectedModel = selectedModel
             }
             
             // Load saved safety level
@@ -283,6 +332,13 @@ struct ChatView: View {
                let level = SafetyLevel(rawValue: savedLevel) {
                 safetyLevel = level
                 conversationManager.safetyLevel = level.rawValue
+            }
+            
+            // Load saved reasoning effort
+            if let savedEffort = UserDefaults.standard.string(forKey: "reasoningEffort"),
+               let effort = ReasoningEffort(rawValue: savedEffort) {
+                reasoningEffort = effort
+                conversationManager.reasoningEffort = effort.rawValue
             }
             
             if showKeyboardOnLaunch {
@@ -325,10 +381,15 @@ struct ChatView: View {
         }
         .onChange(of: selectedModel) { oldValue, newValue in
             conversationManager.selectedModel = newValue
+            UserDefaults.standard.set(newValue, forKey: "selectedModel")
         }
         .onChange(of: safetyLevel) { oldValue, newValue in
             conversationManager.safetyLevel = newValue.rawValue
             UserDefaults.standard.set(newValue.rawValue, forKey: "safetyLevel")
+        }
+        .onChange(of: reasoningEffort) { oldValue, newValue in
+            conversationManager.reasoningEffort = newValue.rawValue
+            UserDefaults.standard.set(newValue.rawValue, forKey: "reasoningEffort")
         }
     }
     
@@ -344,6 +405,15 @@ struct ChatView: View {
         return name
     }
     
+    private func supportsReasoningEffort(for model: String) -> Bool {
+        let modelLower = model.lowercased()
+        return modelLower.contains("gpt-oss") || 
+               modelLower.contains("gpt-o") || 
+               modelLower.contains("gpt-4o") || 
+               modelLower.contains("o1") || 
+               modelLower.contains("o3")
+    }
+    
     private func loadModelsFromServer() {
         guard !serverAddress.isEmpty else { return }
         
@@ -356,7 +426,7 @@ struct ChatView: View {
                         self.availableModels = models
                         // If the current selected model is not in the list, select the first one
                         if !models.contains(selectedModel) {
-                            self.selectedModel = models.first ?? "qwen2.5:latest"
+                            self.selectedModel = models.first ?? "gpt-oss:latest"
                         }
                     }
                 }

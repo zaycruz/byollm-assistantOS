@@ -51,6 +51,7 @@ class ConversationManager: ObservableObject {
     var systemPrompt: String?
     var selectedModel: String = "qwen2.5:latest"
     var safetyLevel: String = "medium"
+    var reasoningEffort: String = "medium"  // New property for reasoning effort
     
     init() {
         self.currentConversation = Conversation(messages: [], createdAt: Date())
@@ -59,10 +60,16 @@ class ConversationManager: ObservableObject {
     
     // MARK: - Thinking Token Parsing
     
-    /// Check if the current model supports thinking tokens (Qwen models)
+    /// Check if the current model supports thinking tokens (Qwen and GPT-oss models)
     private func shouldParseThinkingTokens() -> Bool {
         let modelLower = selectedModel.lowercased()
-        return modelLower.contains("qwen") || modelLower.contains("qwq")
+        return modelLower.contains("qwen") || modelLower.contains("qwq") || modelLower.contains("gpt-oss") || modelLower.contains("gpt-o")
+    }
+    
+    /// Check if the current model supports reasoning effort (GPT-oss and GPT-o models)
+    func supportsReasoningEffort() -> Bool {
+        let modelLower = selectedModel.lowercased()
+        return modelLower.contains("gpt-oss") || modelLower.contains("gpt-o") || modelLower.contains("gpt-4o") || modelLower.contains("o1") || modelLower.contains("o3")
     }
     
     /// Parses response to separate thinking tokens from actual content
@@ -204,8 +211,19 @@ class ConversationManager: ObservableObject {
                 }
                 
                 print("📤 Sending \(apiMessages.count) messages to API")
+                print("🤖 Using model: \(selectedModel)")
+                print("⚙️ Safety level: \(safetyLevel)")
                 
                 var accumulatedResponse = ""
+                var accumulatedReasoning = ""
+                
+                // Only send reasoning effort for models that support it (GPT-o models)
+                let effectiveReasoningEffort = supportsReasoningEffort() ? reasoningEffort : nil
+                
+                print("🔧 Reasoning effort: \(effectiveReasoningEffort ?? "nil (not supported by this model)")")
+                print("🧠 Supports reasoning effort: \(supportsReasoningEffort())")
+                print("🔍 Should parse thinking tokens: \(shouldParseThinkingTokens())")
+                print("🆔 Conversation ID: \(currentConversation.id.uuidString)")
                 
                 // Send to server with streaming
                 try await NetworkManager.shared.sendChatMessageStreaming(
@@ -214,48 +232,76 @@ class ConversationManager: ObservableObject {
                     messages: Array(apiMessages),
                     systemPrompt: systemPrompt,
                     safetyLevel: safetyLevel,
-                    temperature: 0.7
-                ) { chunk in
-                    // Accumulate the chunks and update the message on the main thread
-                    accumulatedResponse += chunk
-                    
-                    // Debug: Log chunk and accumulated length
-                    print("📦 Chunk received (\(chunk.count) chars), total accumulated: \(accumulatedResponse.count) chars")
-                    
-                    // Capture the current response to avoid data race
-                    let currentResponse = accumulatedResponse
-                    
-                    Task { @MainActor in
-                        // For Qwen models, show the raw accumulated response during streaming
-                        // We'll parse thinking tokens at the end to avoid cutting off incomplete tags
-                        if messageIndex < self.currentConversation.messages.count {
-                            if self.shouldParseThinkingTokens() {
-                                // During streaming, show everything (including incomplete tags)
-                                // This prevents truncation and shows the thinking process in real-time
+                    temperature: 0.7,
+                    reasoningEffort: effectiveReasoningEffort,
+                    conversationId: currentConversation.id.uuidString,
+                    onChunk: { chunk in
+                        // Accumulate the content chunks
+                        accumulatedResponse += chunk
+                        
+                        // Debug: Log chunk and accumulated length
+                        print("📦 Content chunk received (\(chunk.count) chars), total accumulated: \(accumulatedResponse.count) chars")
+                        
+                        // Capture the current response to avoid data race
+                        let currentResponse = accumulatedResponse
+                        let currentReasoning = accumulatedReasoning
+                        
+                        Task { @MainActor in
+                            // Update the message with current content and reasoning
+                            if messageIndex < self.currentConversation.messages.count {
                                 self.currentConversation.messages[messageIndex] = Message(
                                     content: currentResponse,
                                     isUser: false,
                                     timestamp: self.currentConversation.messages[messageIndex].timestamp,
-                                    thinkingContent: nil
+                                    thinkingContent: currentReasoning.isEmpty ? nil : currentReasoning
                                 )
-                            } else {
-                                // For non-Qwen models, just show the content normally
+                            }
+                        }
+                    },
+                    onReasoningChunk: { reasoningChunk in
+                        // Accumulate the reasoning chunks (from GPT-oss reasoning_content field)
+                        accumulatedReasoning += reasoningChunk
+                        
+                        print("🧠 Reasoning chunk received (\(reasoningChunk.count) chars), total reasoning: \(accumulatedReasoning.count) chars")
+                        
+                        let currentResponse = accumulatedResponse
+                        let currentReasoning = accumulatedReasoning
+                        
+                        Task { @MainActor in
+                            // Update the message with current content and reasoning
+                            if messageIndex < self.currentConversation.messages.count {
                                 self.currentConversation.messages[messageIndex] = Message(
                                     content: currentResponse,
                                     isUser: false,
                                     timestamp: self.currentConversation.messages[messageIndex].timestamp,
-                                    thinkingContent: nil
+                                    thinkingContent: currentReasoning
                                 )
                             }
                         }
                     }
+                )
+                
+                // After streaming is complete, finalize the message
+                print("✅ Streaming complete!")
+                print("📄 Total content: \(accumulatedResponse.count) chars")
+                print("💭 Total reasoning: \(accumulatedReasoning.count) chars")
+                
+                // For Qwen models, parse thinking tokens from content
+                // For GPT-oss models, reasoning content is already separated
+                let finalParsed: (thinking: String?, content: String)
+                if self.shouldParseThinkingTokens() && accumulatedReasoning.isEmpty {
+                    // Qwen models: parse <think> tags from content
+                    finalParsed = self.parseThinkingTokens(from: accumulatedResponse)
+                    print("🔍 Parsed Qwen thinking tokens: \(finalParsed.thinking?.count ?? 0) chars")
+                } else if !accumulatedReasoning.isEmpty {
+                    // GPT-oss models: use the separate reasoning_content field
+                    finalParsed = (thinking: accumulatedReasoning, content: accumulatedResponse)
+                    print("🔍 Using GPT-oss reasoning_content: \(accumulatedReasoning.count) chars")
+                } else {
+                    // No thinking content
+                    finalParsed = (thinking: nil, content: accumulatedResponse)
                 }
                 
-                // After streaming is complete, parse thinking tokens
-                print("✅ Streaming complete! Total response: \(accumulatedResponse.count) chars")
-                print("📄 Full response preview: \(accumulatedResponse.prefix(500))")
-                
-                let finalParsed = self.parseThinkingTokens(from: accumulatedResponse)
                 if messageIndex < self.currentConversation.messages.count {
                     self.currentConversation.messages[messageIndex] = Message(
                         content: finalParsed.content,
