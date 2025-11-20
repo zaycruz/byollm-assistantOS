@@ -22,6 +22,7 @@ struct ChatRequest: Codable {
     let safetyLevel: String?
     let reasoningEffort: String?
     let conversationId: String?
+    let includeReasoning: Bool?  // Request reasoning content in response
     
     enum CodingKeys: String, CodingKey {
         case model, messages, temperature, stream
@@ -29,10 +30,11 @@ struct ChatRequest: Codable {
         case safetyLevel = "safety_level"
         case reasoningEffort = "reasoning_effort"
         case conversationId = "conversation_id"
+        case includeReasoning = "include_reasoning"
     }
     
     // Initialize without max_tokens by setting it to nil
-    init(model: String, messages: [ChatMessage], temperature: Double?, stream: Bool, safetyLevel: String?, reasoningEffort: String? = nil, conversationId: String? = nil) {
+    init(model: String, messages: [ChatMessage], temperature: Double?, stream: Bool, safetyLevel: String?, reasoningEffort: String? = nil, conversationId: String? = nil, includeReasoning: Bool? = nil) {
         self.model = model
         self.messages = messages
         self.temperature = temperature
@@ -41,6 +43,7 @@ struct ChatRequest: Codable {
         self.safetyLevel = safetyLevel
         self.reasoningEffort = reasoningEffort
         self.conversationId = conversationId
+        self.includeReasoning = includeReasoning
     }
 }
 
@@ -242,7 +245,8 @@ class NetworkManager {
             stream: false,
             safetyLevel: safetyLevel,
             reasoningEffort: reasoningEffort,
-            conversationId: conversationId
+            conversationId: conversationId,
+            includeReasoning: reasoningEffort != nil ? true : nil
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -314,7 +318,8 @@ class NetworkManager {
             stream: true,
             safetyLevel: safetyLevel,
             reasoningEffort: reasoningEffort,
-            conversationId: conversationId
+            conversationId: conversationId,
+            includeReasoning: reasoningEffort != nil ? true : nil
         )
         
         request.httpBody = try JSONEncoder().encode(chatRequest)

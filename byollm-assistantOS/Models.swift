@@ -63,7 +63,15 @@ class ConversationManager: ObservableObject {
     /// Check if the current model supports thinking tokens (Qwen and GPT-oss models)
     private func shouldParseThinkingTokens() -> Bool {
         let modelLower = selectedModel.lowercased()
-        return modelLower.contains("qwen") || modelLower.contains("qwq") || modelLower.contains("gpt-oss") || modelLower.contains("gpt-o")
+        // Check for various naming patterns
+        let hasQwen = modelLower.contains("qwen") || modelLower.contains("qwq")
+        let hasGPTO = modelLower.contains("gpt-o") || modelLower.contains("gpto")
+        let hasGPTOss = modelLower.contains("gpt-oss") || modelLower.contains("gptoss")
+        let hasO1 = modelLower.contains("o1") || modelLower.contains("o3")
+        
+        let shouldParse = hasQwen || hasGPTO || hasGPTOss || hasO1
+        print("🔍 shouldParseThinkingTokens for '\(selectedModel)': \(shouldParse)")
+        return shouldParse
     }
     
     /// Check if the current model supports reasoning effort (GPT-oss and GPT-o models)
@@ -75,28 +83,31 @@ class ConversationManager: ObservableObject {
     /// Parses response to separate thinking tokens from actual content
     /// Supports multiple formats: <think>, <thinking>, and similar tags
     private func parseThinkingTokens(from response: String) -> (thinking: String?, content: String) {
-        // Only parse thinking tokens for Qwen models
+        // Only parse thinking tokens for models that support it
         guard shouldParseThinkingTokens() else {
-            print("⏭️ Skipping thinking token parsing (not a Qwen model)")
+            print("⏭️ Skipping thinking token parsing (model: \(selectedModel))")
             return (thinking: nil, content: response)
         }
         
-        print("🔍 Attempting to parse thinking tokens from response (\(response.count) chars)")
-        print("📝 First 200 chars: \(response.prefix(200))")
+        print("🔍 Parsing thinking tokens from response (\(response.count) chars)")
+        print("📝 First 300 chars: \(response.prefix(300))")
         
         var cleanedResponse = response
         var thinkingContent: String? = nil
         
         // Pattern 1: <think>...</think> or <thinking>...</thinking>
+        // Make it case-insensitive and handle variations
         let thinkPatterns = [
             #"<think>(.*?)</think>"#,
             #"<thinking>(.*?)</thinking>"#,
             #"<THINK>(.*?)</THINK>"#,
-            #"<THINKING>(.*?)</THINKING>"#
+            #"<THINKING>(.*?)</THINKING>"#,
+            #"<Think>(.*?)</Think>"#,
+            #"<Thinking>(.*?)</Thinking>"#
         ]
         
         for pattern in thinkPatterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive]) {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) {
                 let nsRange = NSRange(cleanedResponse.startIndex..<cleanedResponse.endIndex, in: cleanedResponse)
                 
                 if let match = regex.firstMatch(in: cleanedResponse, options: [], range: nsRange) {
@@ -106,13 +117,17 @@ class ConversationManager: ObservableObject {
                     if let thinkRange = Range(match.range(at: 1), in: cleanedResponse) {
                         thinkingContent = String(cleanedResponse[thinkRange]).trimmingCharacters(in: .whitespacesAndNewlines)
                         print("💭 Extracted thinking content: \(thinkingContent?.count ?? 0) chars")
+                        if let thinking = thinkingContent {
+                            print("💭 First 100 chars of thinking: \(thinking.prefix(100))")
+                        }
                     }
                     
-                    // Remove thinking tags from response
+                    // Remove thinking tags and content from response
                     if let fullRange = Range(match.range, in: cleanedResponse) {
                         cleanedResponse.removeSubrange(fullRange)
                         cleanedResponse = cleanedResponse.trimmingCharacters(in: .whitespacesAndNewlines)
                         print("✂️ Cleaned response: \(cleanedResponse.count) chars")
+                        print("✂️ First 100 chars after cleaning: \(cleanedResponse.prefix(100))")
                     }
                     
                     break
@@ -122,6 +137,8 @@ class ConversationManager: ObservableObject {
         
         if thinkingContent == nil {
             print("❌ No thinking tokens found in response")
+            print("📋 Checking if <think> appears anywhere: \(response.contains("<think>"))")
+            print("📋 Checking if <thinking> appears anywhere: \(response.contains("<thinking>"))")
         }
         
         return (thinking: thinkingContent, content: cleanedResponse)
@@ -216,6 +233,8 @@ class ConversationManager: ObservableObject {
                 
                 var accumulatedResponse = ""
                 var accumulatedReasoning = ""
+                var isInsideThinkTag = false
+                var thinkTagBuffer = ""
                 
                 // Only send reasoning effort for models that support it (GPT-o models)
                 let effectiveReasoningEffort = supportsReasoningEffort() ? reasoningEffort : nil
@@ -236,25 +255,112 @@ class ConversationManager: ObservableObject {
                     reasoningEffort: effectiveReasoningEffort,
                     conversationId: currentConversation.id.uuidString,
                     onChunk: { chunk in
-                        // Accumulate the content chunks
-                        accumulatedResponse += chunk
-                        
-                        // Debug: Log chunk and accumulated length
-                        print("📦 Content chunk received (\(chunk.count) chars), total accumulated: \(accumulatedResponse.count) chars")
-                        
-                        // Capture the current response to avoid data race
-                        let currentResponse = accumulatedResponse
-                        let currentReasoning = accumulatedReasoning
-                        
-                        Task { @MainActor in
-                            // Update the message with current content and reasoning
-                            if messageIndex < self.currentConversation.messages.count {
-                                self.currentConversation.messages[messageIndex] = Message(
-                                    content: currentResponse,
-                                    isUser: false,
-                                    timestamp: self.currentConversation.messages[messageIndex].timestamp,
-                                    thinkingContent: currentReasoning.isEmpty ? nil : currentReasoning
-                                )
+                        // For models with separate reasoning_content field, just accumulate normally
+                        if effectiveReasoningEffort != nil {
+                            accumulatedResponse += chunk
+                            
+                            let currentResponse = accumulatedResponse
+                            let currentReasoning = accumulatedReasoning
+                            
+                            Task { @MainActor in
+                                if messageIndex < self.currentConversation.messages.count {
+                                    self.currentConversation.messages[messageIndex] = Message(
+                                        content: currentResponse,
+                                        isUser: false,
+                                        timestamp: self.currentConversation.messages[messageIndex].timestamp,
+                                        thinkingContent: currentReasoning.isEmpty ? nil : currentReasoning
+                                    )
+                                }
+                            }
+                        } else if self.shouldParseThinkingTokens() {
+                            // For Qwen models, parse thinking tags in real-time during streaming
+                            var processedChunk = chunk
+                            
+                            // Check if we're inside a think tag
+                            if isInsideThinkTag {
+                                // Look for closing tag
+                                if let closeIndex = processedChunk.range(of: "</think>", options: .caseInsensitive) ??
+                                   processedChunk.range(of: "</thinking>", options: .caseInsensitive) {
+                                    // Extract thinking content before close tag
+                                    let thinkingPart = String(processedChunk[..<closeIndex.lowerBound])
+                                    thinkTagBuffer += thinkingPart
+                                    accumulatedReasoning = thinkTagBuffer
+                                    
+                                    // Take content after close tag
+                                    processedChunk = String(processedChunk[closeIndex.upperBound...])
+                                    isInsideThinkTag = false
+                                    thinkTagBuffer = ""
+                                    
+                                    print("💭 Closed think tag, extracted \(accumulatedReasoning.count) chars of thinking")
+                                } else {
+                                    // Still inside think tag, accumulate in buffer
+                                    thinkTagBuffer += processedChunk
+                                    processedChunk = ""
+                                }
+                            }
+                            
+                            // Check for opening think tag
+                            if let openRange = processedChunk.range(of: "<think>", options: .caseInsensitive) ??
+                               processedChunk.range(of: "<thinking>", options: .caseInsensitive) {
+                                // Take content before open tag
+                                let beforeThink = String(processedChunk[..<openRange.lowerBound])
+                                accumulatedResponse += beforeThink
+                                
+                                // Start accumulating thinking content
+                                isInsideThinkTag = true
+                                thinkTagBuffer = ""
+                                
+                                // Check if closing tag is in same chunk
+                                let afterOpen = String(processedChunk[openRange.upperBound...])
+                                if let closeRange = afterOpen.range(of: "</think>", options: .caseInsensitive) ??
+                                   afterOpen.range(of: "</thinking>", options: .caseInsensitive) {
+                                    // Complete think tag in single chunk
+                                    let thinkingContent = String(afterOpen[..<closeRange.lowerBound])
+                                    accumulatedReasoning += thinkingContent
+                                    
+                                    // Take content after close tag
+                                    let afterClose = String(afterOpen[closeRange.upperBound...])
+                                    accumulatedResponse += afterClose
+                                    
+                                    isInsideThinkTag = false
+                                    print("💭 Complete think tag in single chunk: \(thinkingContent.count) chars")
+                                } else {
+                                    // Think tag continues in next chunks
+                                    thinkTagBuffer = afterOpen
+                                }
+                            } else if !isInsideThinkTag {
+                                // Normal content outside think tags
+                                accumulatedResponse += processedChunk
+                            }
+                            
+                            let currentResponse = accumulatedResponse
+                            let currentReasoning = accumulatedReasoning
+                            
+                            Task { @MainActor in
+                                if messageIndex < self.currentConversation.messages.count {
+                                    self.currentConversation.messages[messageIndex] = Message(
+                                        content: currentResponse,
+                                        isUser: false,
+                                        timestamp: self.currentConversation.messages[messageIndex].timestamp,
+                                        thinkingContent: currentReasoning.isEmpty ? nil : currentReasoning
+                                    )
+                                }
+                            }
+                        } else {
+                            // No thinking parsing needed
+                            accumulatedResponse += chunk
+                            
+                            let currentResponse = accumulatedResponse
+                            
+                            Task { @MainActor in
+                                if messageIndex < self.currentConversation.messages.count {
+                                    self.currentConversation.messages[messageIndex] = Message(
+                                        content: currentResponse,
+                                        isUser: false,
+                                        timestamp: self.currentConversation.messages[messageIndex].timestamp,
+                                        thinkingContent: nil
+                                    )
+                                }
                             }
                         }
                     },
