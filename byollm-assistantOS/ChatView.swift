@@ -247,9 +247,14 @@ struct ChatView: View {
                                         .disabled(conversationManager.isLoading)
                                     
                                     if conversationManager.isLoading {
-                                        ProgressView()
-                                            .tint(.white)
-                                            .scaleEffect(0.8)
+                                        // Stop button when loading
+                                        Button(action: { 
+                                            conversationManager.stopGenerating()
+                                        }) {
+                                            Image(systemName: "stop.circle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(.red)
+                                        }
                                     } else if !inputText.isEmpty {
                                         Button(action: { sendMessage() }) {
                                             Image(systemName: "arrow.up.circle.fill")
@@ -346,6 +351,8 @@ struct ChatView: View {
                     isInputFocused = true
                 }
             }
+            
+            // Load models AFTER server address is set
             loadModelsFromServer()
             
             // Setup keyboard notifications
@@ -480,10 +487,10 @@ struct MessagesListView: View {
                             .id(message.id)
                     }
                     
-                    // Show typing indicator when loading and last message is not empty
+                    // Show "Thinking..." text when loading and last message is empty
                     if isLoading && (messages.last?.content.isEmpty ?? true) {
-                        TypingIndicator()
-                            .id("typing-indicator")
+                        ThinkingIndicator(fontStyle: fontStyle)
+                            .id("thinking-indicator")
                     }
                 }
                 .padding(.horizontal, 20)
@@ -503,7 +510,7 @@ struct MessagesListView: View {
                 .onChange(of: isLoading) { oldValue, newValue in
                     if newValue {
                         withAnimation {
-                            proxy.scrollTo("typing-indicator", anchor: .bottom)
+                            proxy.scrollTo("thinking-indicator", anchor: .bottom)
                         }
                     }
                 }
@@ -679,6 +686,10 @@ struct MessageBubble: View {
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color.white.opacity(0.2), lineWidth: 1)
                         )
+                        
+                    case .table(let tableData):
+                        MarkdownTableView(data: tableData)
+                            .padding(.vertical, 8)
                     }
                 }
             }
@@ -691,6 +702,7 @@ struct MessageBubble: View {
         case text(AttributedString)
         case code(String, language: String?)
         case toolResult(String)
+        case table(TableData)
     }
     
     private func parseMessageContent(_ content: String) -> [ContentBlock] {
@@ -726,6 +738,52 @@ struct MessageBubble: View {
                 blocks.append(.code(code, language: language.isEmpty ? nil : language))
                 i += 1
                 continue
+            }
+            
+            // Check for Table
+            // A table block typically starts with a header row containing pipes, followed by a separator row
+            if line.contains("|") {
+                let potentialHeader = line
+                if i + 1 < lines.count {
+                    let potentialSeparator = lines[i+1]
+                    let separatorTrimmed = potentialSeparator.trimmingCharacters(in: .whitespaces)
+                    
+                    // Check if separator line looks like |---|---| or ---|---
+                    // Must contain | and - and NOT contain alphanumeric characters (except maybe alignment colons :)
+                    let isSeparator = separatorTrimmed.contains("|") && 
+                                     separatorTrimmed.contains("-") && 
+                                     !separatorTrimmed.contains(where: { $0.isLetter })
+                    
+                    if isSeparator {
+                        // Found a table start!
+                        if !currentText.isEmpty {
+                            blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
+                            currentText = ""
+                        }
+                        
+                        var tableLines: [String] = [potentialHeader, potentialSeparator]
+                        i += 2
+                        
+                        // Collect subsequent rows
+                        while i < lines.count {
+                            let rowLine = lines[i]
+                            if !rowLine.trimmingCharacters(in: .whitespaces).isEmpty && rowLine.contains("|") {
+                                tableLines.append(rowLine)
+                                i += 1
+                            } else {
+                                break
+                            }
+                        }
+                        
+                        if let tableData = parseTable(tableLines) {
+                            blocks.append(.table(tableData))
+                        } else {
+                            // Fallback: treat as text if parsing failed
+                            currentText += tableLines.joined(separator: "\n") + "\n"
+                        }
+                        continue
+                    }
+                }
             }
             
             // Check for tool result patterns (customize this based on your LLM's output format)
@@ -765,6 +823,44 @@ struct MessageBubble: View {
         }
         
         return blocks
+    }
+    
+    private func parseTable(_ lines: [String]) -> TableData? {
+        guard lines.count >= 2 else { return nil }
+        
+        func parseRow(_ line: String) -> [String] {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // Remove leading/trailing pipes if present
+            var content = trimmed
+            if content.hasPrefix("|") { content.removeFirst() }
+            if content.hasSuffix("|") { content.removeLast() }
+            
+            // Split by pipe
+            return content.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        
+        let headers = parseRow(lines[0])
+        guard !headers.isEmpty else { return nil }
+        
+        var rows: [[String]] = []
+        for i in 2..<lines.count {
+            let row = parseRow(lines[i])
+            // Only add if it looks like a valid row (has content)
+            if !row.isEmpty {
+                // Pad with empty strings if fewer cells than headers
+                var paddedRow = row
+                if paddedRow.count < headers.count {
+                    paddedRow.append(contentsOf: Array(repeating: "", count: headers.count - paddedRow.count))
+                }
+                // Truncate if more cells than headers
+                if paddedRow.count > headers.count {
+                    paddedRow = Array(paddedRow.prefix(headers.count))
+                }
+                rows.append(paddedRow)
+            }
+        }
+        
+        return TableData(headers: headers, rows: rows)
     }
     
     private func parseMarkdown(_ text: String) -> AttributedString {
@@ -816,60 +912,22 @@ struct MessageBubble: View {
     }
     
     private func parseInlineFormatting(_ text: String) -> AttributedString {
-        var result = AttributedString()
-        var currentText = ""
-        var i = text.startIndex
-        
-        while i < text.endIndex {
-            let char = text[i]
+        do {
+            var attributed = try AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace))
             
-            // Check for bold markers (**)
-            if char == "*" && text.index(after: i) < text.endIndex && text[text.index(after: i)] == "*" {
-                // Found **, save current text if any
-                if !currentText.isEmpty {
-                    var normalAttr = AttributedString(currentText)
-                    normalAttr.font = fontStyle.apply(size: 17, weight: .regular)
-                    normalAttr.foregroundColor = .white
-                    result.append(normalAttr)
-                    currentText = ""
-                }
-                
-                // Skip the two asterisks
-                i = text.index(i, offsetBy: 2)
-                
-                // Find the closing **
-                var boldText = ""
-                while i < text.endIndex {
-                    if text[i] == "*" && text.index(after: i) < text.endIndex && text[text.index(after: i)] == "*" {
-                        // Found closing **
-                        var boldAttr = AttributedString(boldText)
-                        boldAttr.font = fontStyle.apply(size: 17, weight: .bold)
-                        boldAttr.foregroundColor = .white
-                        result.append(boldAttr)
-                        
-                        // Skip closing **
-                        i = text.index(i, offsetBy: 2)
-                        break
-                    } else {
-                        boldText.append(text[i])
-                        i = text.index(after: i)
-                    }
-                }
-            } else {
-                currentText.append(char)
-                i = text.index(after: i)
-            }
+            // Set base font and color
+            // SwiftUI will apply bold/italic traits from markdown on top of this base font
+            attributed.font = fontStyle.apply(size: 17, weight: .regular)
+            attributed.foregroundColor = .white
+            
+            return attributed
+        } catch {
+            // Fallback to plain text if parsing fails
+            var attributed = AttributedString(text)
+            attributed.font = fontStyle.apply(size: 17, weight: .regular)
+            attributed.foregroundColor = .white
+            return attributed
         }
-        
-        // Add any remaining text
-        if !currentText.isEmpty {
-            var normalAttr = AttributedString(currentText)
-            normalAttr.font = fontStyle.apply(size: 17, weight: .regular)
-            normalAttr.foregroundColor = .white
-            result.append(normalAttr)
-        }
-        
-        return result
     }
 }
 
@@ -1397,6 +1455,51 @@ struct ConversationHistoryRow: View {
             }
         }
         .clipped()
+    }
+}
+
+struct ThinkingIndicator: View {
+    let fontStyle: ChatView.FontStyle
+    @State private var animationAmount = 0.0
+    
+    var body: some View {
+        HStack(alignment: .center, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "brain")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.8))
+                
+                Text("Thinking")
+                    .font(fontStyle.apply(size: 15, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+                
+                // Animated dots
+                HStack(spacing: 3) {
+                    ForEach(0..<3) { index in
+                        Circle()
+                            .fill(Color.white.opacity(0.7))
+                            .frame(width: 4, height: 4)
+                            .opacity(animationAmount == Double(index) ? 0.3 : 1.0)
+                            .animation(
+                                Animation.easeInOut(duration: 0.6)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.2),
+                                value: animationAmount
+                            )
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(20)
+            .frame(maxWidth: 280, alignment: .leading)
+            
+            Spacer()
+        }
+        .onAppear {
+            animationAmount = 1.0
+        }
     }
 }
 

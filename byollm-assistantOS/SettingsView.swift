@@ -63,53 +63,54 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-                .onTapGesture {
-                    isServerFieldFocused = false
-                }
-            
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    if isInSidePanel {
-                        Button(action: { onBack?() }) {
-                            Image(systemName: "chevron.left")
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                    .onTapGesture {
+                        isServerFieldFocused = false
+                    }
+                
+                VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        if isInSidePanel {
+                            Button(action: { onBack?() }) {
+                                Image(systemName: "chevron.left")
+                                    .font(.title3)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.white.opacity(0.1))
+                                    .clipShape(Circle())
+                            }
+                        } else {
+                            Spacer()
+                        }
+                        
+                        Text("Settings")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        Button(action: { 
+                            if isInSidePanel {
+                                onDismiss?()
+                            } else {
+                                dismiss()
+                            }
+                        }) {
+                            Image(systemName: "xmark")
                                 .font(.title3)
                                 .foregroundColor(.white)
                                 .frame(width: 44, height: 44)
                                 .background(Color.white.opacity(0.1))
                                 .clipShape(Circle())
                         }
-                    } else {
-                        Spacer()
+                        .padding(.trailing, 20)
                     }
-                    
-                    Text("Settings")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button(action: { 
-                        if isInSidePanel {
-                            onDismiss?()
-                        } else {
-                            dismiss()
-                        }
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.title3)
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.1))
-                            .clipShape(Circle())
-                    }
-                    .padding(.trailing, 20)
-                }
-                .padding(.top, 20)
-                .padding(.bottom, 30)
+                    .padding(.top, 20)
+                    .padding(.bottom, 30)
                 
                 ScrollView {
                     VStack(spacing: 24) {
@@ -404,7 +405,10 @@ struct SettingsView: View {
             Text("Are you sure you want to delete all conversation history? This action cannot be undone.")
         }
         .onAppear {
-            editingServerAddress = serverAddress
+            // Initialize editing field with current value
+            if editingServerAddress.isEmpty {
+                editingServerAddress = serverAddress
+            }
         }
         .fullScreenCover(isPresented: $showingPersonalization) {
             PersonalizationView(
@@ -412,6 +416,8 @@ struct SettingsView: View {
                 selectedTheme: $selectedTheme,
                 selectedFontStyle: $selectedFontStyle
             )
+        }
+        .navigationBarHidden(true)
         }
     }
     
