@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @StateObject private var conversationManager = ConversationManager()
@@ -24,6 +26,14 @@ struct ChatView: View {
     @State private var reasoningEffort: ReasoningEffort = .medium
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isInputFocused: Bool
+    
+    // Attachment states
+    @State private var showPhotosPicker = false
+    @State private var showCamera = false
+    @State private var showDocumentPicker = false
+    @State private var selectedPhotosItems: [PhotosPickerItem] = []
+    @State private var attachedImages: [UIImage] = []
+    @State private var attachedFileURLs: [URL] = []
     
     enum SafetyLevel: String, CaseIterable {
         case low = "low"
@@ -177,9 +187,80 @@ struct ChatView: View {
                         
                         // Input Area
                         VStack(spacing: 12) {
+                            // Attachment Preview
+                            if !attachedImages.isEmpty || !attachedFileURLs.isEmpty {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        // Image attachments
+                                        ForEach(attachedImages.indices, id: \.self) { index in
+                                            ZStack(alignment: .topTrailing) {
+                                                Image(uiImage: attachedImages[index])
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 60, height: 60)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                                
+                                                Button(action: {
+                                                    attachedImages.remove(at: index)
+                                                }) {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .font(.system(size: 18))
+                                                        .foregroundColor(.white)
+                                                        .background(Circle().fill(.black.opacity(0.5)))
+                                                }
+                                                .offset(x: 6, y: -6)
+                                            }
+                                        }
+                                        
+                                        // File attachments
+                                        ForEach(attachedFileURLs.indices, id: \.self) { index in
+                                            ZStack(alignment: .topTrailing) {
+                                                VStack(spacing: 4) {
+                                                    Image(systemName: "doc.fill")
+                                                        .font(.title2)
+                                                        .foregroundColor(.white)
+                                                    Text(attachedFileURLs[index].lastPathComponent)
+                                                        .font(.caption2)
+                                                        .foregroundColor(.white.opacity(0.8))
+                                                        .lineLimit(1)
+                                                        .frame(maxWidth: 50)
+                                                }
+                                                .frame(width: 60, height: 60)
+                                                .background(Color.white.opacity(0.2))
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                                
+                                                Button(action: {
+                                                    attachedFileURLs.remove(at: index)
+                                                }) {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .font(.system(size: 18))
+                                                        .foregroundColor(.white)
+                                                        .background(Circle().fill(.black.opacity(0.5)))
+                                                }
+                                                .offset(x: 6, y: -6)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                }
+                                .frame(height: 70)
+                            }
+                            
                             // Input Field
                             HStack(spacing: 12) {
-                                Button(action: {}) {
+                                Menu {
+                                    Button(action: { showPhotosPicker = true }) {
+                                        Label("Photo Library", systemImage: "photo.on.rectangle")
+                                    }
+                                    
+                                    Button(action: { showCamera = true }) {
+                                        Label("Take Photo", systemImage: "camera")
+                                    }
+                                    
+                                    Button(action: { showDocumentPicker = true }) {
+                                        Label("Choose File", systemImage: "doc")
+                                    }
+                                } label: {
                                     Image(systemName: "plus")
                                         .font(.title2)
                                         .foregroundColor(.white)
@@ -278,6 +359,32 @@ struct ChatView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                 }
+            }
+            .photosPicker(isPresented: $showPhotosPicker, selection: $selectedPhotosItems, maxSelectionCount: 5, matching: .images)
+            .onChange(of: selectedPhotosItems) { oldValue, newValue in
+                Task {
+                    for item in newValue {
+                        if let data = try? await item.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            attachedImages.append(image)
+                        }
+                    }
+                    selectedPhotosItems = []
+                }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraPickerView(image: Binding(
+                    get: { nil },
+                    set: { image in
+                        if let image = image {
+                            attachedImages.append(image)
+                        }
+                    }
+                ))
+                .ignoresSafeArea()
+            }
+            .sheet(isPresented: $showDocumentPicker) {
+                DocumentPickerView(fileURLs: $attachedFileURLs)
             }
         }
         .onAppear {
@@ -1844,6 +1951,80 @@ struct NavItem: View {
                 }
             }
         )
+    }
+}
+
+// MARK: - Camera Picker
+struct CameraPickerView: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    @Environment(\.dismiss) private var dismiss
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPickerView
+        
+        init(_ parent: CameraPickerView) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.image = image
+            }
+            parent.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
+}
+
+// MARK: - Document Picker
+struct DocumentPickerView: UIViewControllerRepresentable {
+    @Binding var fileURLs: [URL]
+    @Environment(\.dismiss) private var dismiss
+    
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        picker.allowsMultipleSelection = true
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let parent: DocumentPickerView
+        
+        init(_ parent: DocumentPickerView) {
+            self.parent = parent
+        }
+        
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            parent.fileURLs.append(contentsOf: urls)
+            parent.dismiss()
+        }
+        
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            parent.dismiss()
+        }
     }
 }
 
