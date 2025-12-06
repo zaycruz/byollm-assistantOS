@@ -24,6 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AF1056B42EE22BF600EA87E7 /* byollm-assistantOS.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = "byollm-assistantOS.xctestplan"; sourceTree = "<group>"; };
 		AF32B4992ECAAA890037643D /* byollm-assistantOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "byollm-assistantOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF32B4A62ECAAA8A0037643D /* byollm-assistantOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "byollm-assistantOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF32B4B02ECAAA8A0037643D /* byollm-assistantOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "byollm-assistantOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -98,6 +99,7 @@
 		AF32B4902ECAAA880037643D = {
 			isa = PBXGroup;
 			children = (
+				AF1056B42EE22BF600EA87E7 /* byollm-assistantOS.xctestplan */,
 				AF32B49B2ECAAA890037643D /* byollm-assistantOS */,
 				AF32B4A92ECAAA8A0037643D /* byollm-assistantOSTests */,
 				AF32B4B32ECAAA8A0037643D /* byollm-assistantOSUITests */,

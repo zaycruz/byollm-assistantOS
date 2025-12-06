@@ -108,13 +108,22 @@ struct ChatView: View {
                         // Top Bar
                         ZStack {
                             HStack {
-                                // Combined Settings/History Button - Left
+                                // Combined Settings/History/Notes Button - Left
                                 HStack(spacing: 16) {
                                     Button(action: { 
                                         sidePanelView = .settings
                                         showSidePanel = true
                                     }) {
                                         Image(systemName: "gearshape")
+                                            .font(.title3)
+                                            .foregroundColor(.white)
+                                    }
+                                    
+                                    Button(action: { 
+                                        sidePanelView = .notes
+                                        showSidePanel = true
+                                    }) {
+                                        Image(systemName: "note.text")
                                             .font(.title3)
                                             .foregroundColor(.white)
                                     }
@@ -293,6 +302,9 @@ struct ChatView: View {
                         selectedTheme: $selectedTheme,
                         selectedFontStyle: $selectedFontStyle,
                         safetyLevel: $safetyLevel,
+                        selectedModel: $selectedModel,
+                        availableModels: $availableModels,
+                        reasoningEffort: $reasoningEffort,
                         isInSidePanel: false,
                         onBack: {
                             showSidePanel = false
@@ -307,6 +319,18 @@ struct ChatView: View {
                     ChatHistorySheetView(
                         conversationManager: conversationManager,
                         isPresented: $showSidePanel
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                } else if sidePanelView == .notes {
+                    NotesView(
+                        isInSidePanel: false,
+                        onBack: {
+                            showSidePanel = false
+                        },
+                        onDismiss: {
+                            showSidePanel = false
+                        }
                     )
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
@@ -935,6 +959,7 @@ enum SidePanelContentView {
     case navigation
     case chatHistory
     case settings
+    case notes
 }
 
 struct SidePanelContainerView: View {
@@ -945,6 +970,9 @@ struct SidePanelContainerView: View {
     @Binding var selectedTheme: ChatView.AppTheme
     @Binding var selectedFontStyle: ChatView.FontStyle
     @Binding var safetyLevel: ChatView.SafetyLevel
+    @Binding var selectedModel: String
+    @Binding var availableModels: [String]
+    @Binding var reasoningEffort: ChatView.ReasoningEffort
     @Binding var currentView: SidePanelContentView
     @Binding var isPresented: Bool
     
@@ -964,6 +992,19 @@ struct SidePanelContainerView: View {
                     isPresented: $isPresented
                 )
                 .transition(.move(edge: .leading))
+            } else if currentView == .notes {
+                NotesView(
+                    isInSidePanel: true,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            currentView = .navigation
+                        }
+                    },
+                    onDismiss: {
+                        isPresented = false
+                    }
+                )
+                .transition(.move(edge: .trailing))
             } else {
                 SettingsView(
                     conversationManager: conversationManager,
@@ -973,6 +1014,9 @@ struct SidePanelContainerView: View {
                     selectedTheme: $selectedTheme,
                     selectedFontStyle: $selectedFontStyle,
                     safetyLevel: $safetyLevel,
+                    selectedModel: $selectedModel,
+                    availableModels: $availableModels,
+                    reasoningEffort: $reasoningEffort,
                     isInSidePanel: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -1620,6 +1664,12 @@ struct NavigationSidebarView: View {
                             VStack(spacing: 0) {
                                 NavItem(icon: "sparkles", title: "Atlas", isFirst: true) {
                                     isPresented = false
+                                }
+                                
+                                NavItem(icon: "note.text", title: "Notes") {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentView = .notes
+                                    }
                                 }
                                 
                                 NavItem(icon: "book", title: "Library") {

@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "7F01681D-0535-49CD-B63A-70D0AA79A666",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:byollm-assistantOS.xcodeproj",
+      "identifier" : "AF32B4982ECAAA880037643D",
+      "name" : "byollm-assistantOS"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:byollm-assistantOS.xcodeproj",
+        "identifier" : "AF32B4A52ECAAA8A0037643D",
+        "name" : "byollm-assistantOSTests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:byollm-assistantOS.xcodeproj",
+        "identifier" : "AF32B4AF2ECAAA8A0037643D",
+        "name" : "byollm-assistantOSUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

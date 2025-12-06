@@ -16,6 +16,9 @@ struct SettingsView: View {
     @Binding var selectedTheme: ChatView.AppTheme
     @Binding var selectedFontStyle: ChatView.FontStyle
     @Binding var safetyLevel: ChatView.SafetyLevel
+    @Binding var selectedModel: String
+    @Binding var availableModels: [String]
+    @Binding var reasoningEffort: ChatView.ReasoningEffort
     @State private var showingDeleteAlert = false
     @State private var showingPersonalization = false
     @State private var editingServerAddress: String = ""
@@ -63,12 +66,11 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                    .onTapGesture {
-                        isServerFieldFocused = false
-                    }
+        ZStack {
+            Color.black.ignoresSafeArea()
+                .onTapGesture {
+                    isServerFieldFocused = false
+                }
                 
                 VStack(spacing: 0) {
                     // Header
@@ -222,6 +224,106 @@ struct SettingsView: View {
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 16)
+                            }
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(16)
+                            .padding(.horizontal, 20)
+                        }
+                        
+                        // Model Selection Section
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Model")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .padding(.horizontal, 20)
+                                .padding(.bottom, 12)
+                            
+                            VStack(spacing: 0) {
+                                // Model Picker
+                                HStack(spacing: 16) {
+                                    Image(systemName: "cpu")
+                                        .font(.title3)
+                                        .foregroundColor(.white)
+                                        .frame(width: 24)
+                                    
+                                    Text("Selected Model")
+                                        .foregroundColor(.white)
+                                        .font(.body)
+                                    
+                                    Spacer()
+                                    
+                                    Menu {
+                                        ForEach(availableModels, id: \.self) { model in
+                                            Button(action: {
+                                                selectedModel = model
+                                            }) {
+                                                HStack {
+                                                    Text(formatModelName(model))
+                                                    if selectedModel == model {
+                                                        Image(systemName: "checkmark")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Text(formatModelName(selectedModel))
+                                                .foregroundColor(.white.opacity(0.7))
+                                                .font(.body)
+                                            Image(systemName: "chevron.up.chevron.down")
+                                                .font(.caption2)
+                                                .foregroundColor(.white.opacity(0.5))
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                
+                                // Reasoning Effort (only for supported models)
+                                if supportsReasoningEffort(for: selectedModel) {
+                                    Divider()
+                                        .background(Color.white.opacity(0.1))
+                                        .padding(.leading, 70)
+                                    
+                                    HStack(spacing: 16) {
+                                        Image(systemName: "brain")
+                                            .font(.title3)
+                                            .foregroundColor(.white)
+                                            .frame(width: 24)
+                                        
+                                        Text("Reasoning Effort")
+                                            .foregroundColor(.white)
+                                            .font(.body)
+                                        
+                                        Spacer()
+                                        
+                                        Menu {
+                                            ForEach(ChatView.ReasoningEffort.allCases, id: \.self) { effort in
+                                                Button(action: {
+                                                    reasoningEffort = effort
+                                                }) {
+                                                    HStack {
+                                                        Text(effort.displayName)
+                                                        if reasoningEffort == effort {
+                                                            Image(systemName: "checkmark")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Text(reasoningEffort.displayName)
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                    .font(.body)
+                                                Image(systemName: "chevron.up.chevron.down")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.white.opacity(0.5))
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 16)
+                                }
                             }
                             .background(Color.white.opacity(0.05))
                             .cornerRadius(16)
@@ -417,8 +519,6 @@ struct SettingsView: View {
                 selectedFontStyle: $selectedFontStyle
             )
         }
-        .navigationBarHidden(true)
-        }
     }
     
     private func testConnection() {
@@ -445,6 +545,20 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+    
+    private func formatModelName(_ modelName: String) -> String {
+        let name = modelName.replacingOccurrences(of: ":latest", with: "")
+        return name
+    }
+    
+    private func supportsReasoningEffort(for model: String) -> Bool {
+        let modelLower = model.lowercased()
+        return modelLower.contains("gpt-oss") || 
+               modelLower.contains("gpt-o") || 
+               modelLower.contains("gpt-4o") || 
+               modelLower.contains("o1") || 
+               modelLower.contains("o3")
     }
 }
 
