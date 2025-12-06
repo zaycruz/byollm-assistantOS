@@ -190,6 +190,13 @@ struct ChatView: View {
                                     }) {
                                         Label("Conversations", systemImage: "message")
                                     }
+                                    
+                                    Button(action: { 
+                                        sidePanelView = .arise
+                                        showSidePanel = true
+                                    }) {
+                                        Label("ARISE", systemImage: "tree")
+                                    }
                                 } label: {
                                     Image(systemName: "line.3.horizontal")
                                         .font(.title2)
@@ -395,6 +402,18 @@ struct ChatView: View {
                     .presentationDragIndicator(.visible)
                 } else if sidePanelView == .notes {
                     NotesView(
+                        isInSidePanel: false,
+                        onBack: {
+                            showSidePanel = false
+                        },
+                        onDismiss: {
+                            showSidePanel = false
+                        }
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                } else if sidePanelView == .arise {
+                    ARISEView(
                         isInSidePanel: false,
                         onBack: {
                             showSidePanel = false
@@ -1063,6 +1082,7 @@ enum SidePanelContentView {
     case chatHistory
     case settings
     case notes
+    case arise
 }
 
 struct SidePanelContainerView: View {
@@ -1097,6 +1117,19 @@ struct SidePanelContainerView: View {
                 .transition(.move(edge: .leading))
             } else if currentView == .notes {
                 NotesView(
+                    isInSidePanel: true,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            currentView = .navigation
+                        }
+                    },
+                    onDismiss: {
+                        isPresented = false
+                    }
+                )
+                .transition(.move(edge: .trailing))
+            } else if currentView == .arise {
+                ARISEView(
                     isInSidePanel: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.3)) {
@@ -1772,6 +1805,12 @@ struct NavigationSidebarView: View {
                                 NavItem(icon: "note.text", title: "Notes") {
                                     withAnimation(.easeInOut(duration: 0.3)) {
                                         currentView = .notes
+                                    }
+                                }
+                                
+                                NavItem(icon: "tree", title: "ARISE") {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        currentView = .arise
                                     }
                                 }
                                 
