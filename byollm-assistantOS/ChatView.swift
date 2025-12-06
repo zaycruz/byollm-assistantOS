@@ -27,7 +27,6 @@ struct ChatView: View {
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isInputFocused: Bool
     
-    // Attachment states
     @State private var showPhotosPicker = false
     @State private var showCamera = false
     @State private var showDocumentPicker = false
@@ -55,8 +54,8 @@ struct ChatView: View {
         }
     }
     
-    enum AppTheme {
-        case ocean, sunset, forest, midnight, lavender, crimson, coral, arctic
+    enum AppTheme: String, CaseIterable {
+        case ocean, sunset, forest, midnight, lavender, crimson, coral, arctic, cyberpunk, smokeGrey
         
         var colors: [Color] {
             switch self {
@@ -76,11 +75,54 @@ struct ChatView: View {
                 return [Color(red: 0.95, green: 0.5, blue: 0.45), Color(red: 0.95, green: 0.7, blue: 0.5)]
             case .arctic:
                 return [Color(red: 0.7, green: 0.85, blue: 0.9), Color(red: 0.8, green: 0.9, blue: 0.95)]
+            case .cyberpunk:
+                return [
+                    Color(red: 0.02, green: 0.02, blue: 0.08),      // Deep void black
+                    Color(red: 0.12, green: 0.0, blue: 0.18),       // Dark purple undertone
+                    Color(red: 0.45, green: 0.0, blue: 0.35),       // Neon magenta glow
+                    Color(red: 0.0, green: 0.65, blue: 0.75)        // Electric cyan accent
+                ]
+            case .smokeGrey:
+                return [
+                    Color(red: 0.12, green: 0.12, blue: 0.14),      // Charcoal black
+                    Color(red: 0.22, green: 0.22, blue: 0.25),      // Deep smoke
+                    Color(red: 0.32, green: 0.32, blue: 0.36)       // Silver smoke
+                ]
+            }
+        }
+        
+        var displayName: String {
+            switch self {
+            case .ocean: return "Ocean"
+            case .sunset: return "Sunset"
+            case .forest: return "Forest"
+            case .midnight: return "Midnight"
+            case .lavender: return "Lavender"
+            case .crimson: return "Crimson"
+            case .coral: return "Coral"
+            case .arctic: return "Arctic"
+            case .cyberpunk: return "Cyberpunk"
+            case .smokeGrey: return "Smoke Grey"
+            }
+        }
+        
+        var description: String {
+            switch self {
+            case .ocean: return "Calm teal and blue"
+            case .sunset: return "Warm orange tones"
+            case .forest: return "Natural green hues"
+            case .midnight: return "Deep blue night"
+            case .lavender: return "Soft purple shades"
+            case .crimson: return "Bold red burgundy"
+            case .coral: return "Vibrant coral peach"
+            case .arctic: return "Cool light blue"
+            case .cyberpunk: return "Blade Runner neon nights"
+            case .smokeGrey: return "Sleek neutral grey"
             }
         }
     }
     
-    enum FontStyle {
+    enum FontStyle: String, CaseIterable {
         case system, rounded, serif, monospaced
         
         func apply(size: CGFloat, weight: Font.Weight = .regular) -> Font {
@@ -93,6 +135,15 @@ struct ChatView: View {
                 return .system(size: size, weight: weight, design: .serif)
             case .monospaced:
                 return .system(size: size, weight: weight, design: .monospaced)
+            }
+        }
+        
+        var displayName: String {
+            switch self {
+            case .system: return "System"
+            case .rounded: return "Rounded"
+            case .serif: return "Serif"
+            case .monospaced: return "Monospaced"
             }
         }
     }
@@ -118,7 +169,6 @@ struct ChatView: View {
                         // Top Bar
                         ZStack {
                             HStack {
-                                // Hamburger Menu - Left
                                 Menu {
                                     Button(action: { 
                                         sidePanelView = .settings
@@ -187,11 +237,9 @@ struct ChatView: View {
                         
                         // Input Area
                         VStack(spacing: 12) {
-                            // Attachment Preview
                             if !attachedImages.isEmpty || !attachedFileURLs.isEmpty {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 8) {
-                                        // Image attachments
                                         ForEach(attachedImages.indices, id: \.self) { index in
                                             ZStack(alignment: .topTrailing) {
                                                 Image(uiImage: attachedImages[index])
@@ -212,7 +260,6 @@ struct ChatView: View {
                                             }
                                         }
                                         
-                                        // File attachments
                                         ForEach(attachedFileURLs.indices, id: \.self) { index in
                                             ZStack(alignment: .topTrailing) {
                                                 VStack(spacing: 4) {
@@ -420,6 +467,24 @@ struct ChatView: View {
                 conversationManager.reasoningEffort = effort.rawValue
             }
             
+            // Load saved theme
+            if let savedTheme = UserDefaults.standard.string(forKey: "selectedTheme"),
+               let theme = AppTheme(rawValue: savedTheme) {
+                selectedTheme = theme
+            }
+            
+            // Load saved font style
+            if let savedFont = UserDefaults.standard.string(forKey: "selectedFontStyle"),
+               let font = FontStyle(rawValue: savedFont) {
+                selectedFontStyle = font
+            }
+            
+            // Load saved system prompt
+            if let savedPrompt = UserDefaults.standard.string(forKey: "systemPrompt") {
+                systemPrompt = savedPrompt
+                conversationManager.systemPrompt = savedPrompt
+            }
+            
             if showKeyboardOnLaunch {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     isInputFocused = true
@@ -457,9 +522,6 @@ struct ChatView: View {
             UserDefaults.standard.set(newValue, forKey: "serverAddress")
             loadModelsFromServer()
         }
-        .onChange(of: systemPrompt) { oldValue, newValue in
-            conversationManager.systemPrompt = newValue
-        }
         .onChange(of: selectedModel) { oldValue, newValue in
             conversationManager.selectedModel = newValue
             UserDefaults.standard.set(newValue, forKey: "selectedModel")
@@ -471,6 +533,16 @@ struct ChatView: View {
         .onChange(of: reasoningEffort) { oldValue, newValue in
             conversationManager.reasoningEffort = newValue.rawValue
             UserDefaults.standard.set(newValue.rawValue, forKey: "reasoningEffort")
+        }
+        .onChange(of: selectedTheme) { oldValue, newValue in
+            UserDefaults.standard.set(newValue.rawValue, forKey: "selectedTheme")
+        }
+        .onChange(of: selectedFontStyle) { oldValue, newValue in
+            UserDefaults.standard.set(newValue.rawValue, forKey: "selectedFontStyle")
+        }
+        .onChange(of: systemPrompt) { oldValue, newValue in
+            conversationManager.systemPrompt = newValue
+            UserDefaults.standard.set(newValue, forKey: "systemPrompt")
         }
     }
     

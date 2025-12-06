@@ -43,6 +43,8 @@ struct PersonalizationView: View {
         case nightOwl = "Night Owl"
         case cobalt2 = "Cobalt 2"
         case synthwave = "Synthwave '84"
+        case cyberpunk = "Cyberpunk"
+        case smokeGrey = "Smoke Grey"
         
         var id: String { rawValue }
         
@@ -62,6 +64,8 @@ struct PersonalizationView: View {
             case .nightOwl: return "Fine-tuned for night owls"
             case .cobalt2: return "Dusty blue with vibrant accents"
             case .synthwave: return "Neon-inspired retro cyberpunk theme"
+            case .cyberpunk: return "Blade Runner neon nights"
+            case .smokeGrey: return "Sleek neutral grey tones"
             }
         }
         
@@ -81,6 +85,8 @@ struct PersonalizationView: View {
             case .nightOwl: return .midnight
             case .cobalt2: return .ocean
             case .synthwave: return .lavender
+            case .cyberpunk: return .cyberpunk
+            case .smokeGrey: return .smokeGrey
             }
         }
         
@@ -100,6 +106,8 @@ struct PersonalizationView: View {
             case .nightOwl: return .rounded
             case .cobalt2: return .monospaced
             case .synthwave: return .rounded
+            case .cyberpunk: return .monospaced
+            case .smokeGrey: return .system
             }
         }
     }
@@ -435,14 +443,15 @@ struct PersonalizationView: View {
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
-                        ThemeCardButton(name: "Ocean", colors: [Color(red: 0.2, green: 0.4, blue: 0.35), Color(red: 0.15, green: 0.45, blue: 0.5)], description: "Calm teal and blue", isSelected: selectedTheme == .ocean, action: { selectedTheme = .ocean })
-                        ThemeCardButton(name: "Sunset", colors: [Color(red: 0.95, green: 0.4, blue: 0.3), Color(red: 0.95, green: 0.65, blue: 0.3)], description: "Warm orange tones", isSelected: selectedTheme == .sunset, action: { selectedTheme = .sunset })
-                        ThemeCardButton(name: "Forest", colors: [Color(red: 0.15, green: 0.35, blue: 0.2), Color(red: 0.25, green: 0.45, blue: 0.25)], description: "Natural green hues", isSelected: selectedTheme == .forest, action: { selectedTheme = .forest })
-                        ThemeCardButton(name: "Midnight", colors: [Color(red: 0.1, green: 0.1, blue: 0.2), Color(red: 0.15, green: 0.15, blue: 0.3)], description: "Deep blue night", isSelected: selectedTheme == .midnight, action: { selectedTheme = .midnight })
-                        ThemeCardButton(name: "Lavender", colors: [Color(red: 0.4, green: 0.3, blue: 0.5), Color(red: 0.5, green: 0.4, blue: 0.6)], description: "Soft purple shades", isSelected: selectedTheme == .lavender, action: { selectedTheme = .lavender })
-                        ThemeCardButton(name: "Crimson", colors: [Color(red: 0.5, green: 0.15, blue: 0.2), Color(red: 0.6, green: 0.2, blue: 0.3)], description: "Bold red burgundy", isSelected: selectedTheme == .crimson, action: { selectedTheme = .crimson })
-                        ThemeCardButton(name: "Coral", colors: [Color(red: 0.95, green: 0.5, blue: 0.45), Color(red: 0.95, green: 0.7, blue: 0.5)], description: "Vibrant coral peach", isSelected: selectedTheme == .coral, action: { selectedTheme = .coral })
-                        ThemeCardButton(name: "Arctic", colors: [Color(red: 0.7, green: 0.85, blue: 0.9), Color(red: 0.8, green: 0.9, blue: 0.95)], description: "Cool light blue", isSelected: selectedTheme == .arctic, action: { selectedTheme = .arctic })
+                        ForEach(ChatView.AppTheme.allCases, id: \.self) { theme in
+                            ThemeCardButton(
+                                name: theme.displayName,
+                                colors: theme.colors,
+                                description: theme.description,
+                                isSelected: selectedTheme == theme,
+                                action: { selectedTheme = theme }
+                            )
+                        }
                     }
                     .padding(.horizontal, 20)
                 }

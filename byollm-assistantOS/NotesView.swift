@@ -16,11 +16,9 @@ struct Note: Identifiable, Codable {
     var createdAt: Date
     var modifiedAt: Date
     var isPinned: Bool
-    var audioFileName: String? // For voice notes
-    
-    // Optional metadata for LLM context
-    var sponsoringThought: String? // The main idea or reason behind creating this note
-    var creationContext: String? // The surrounding context behind its creation
+    var audioFileName: String?
+    var sponsoringThought: String?
+    var creationContext: String?
     
     init(id: UUID = UUID(), title: String = "", content: String = "", isPinned: Bool = false, audioFileName: String? = nil, sponsoringThought: String? = nil, creationContext: String? = nil) {
         self.id = id
@@ -164,7 +162,6 @@ struct NotesView: View {
     @Environment(\.dismiss) var dismiss
     @Namespace private var animation
     
-    // Side panel mode
     var isInSidePanel: Bool = false
     var onBack: (() -> Void)?
     var onDismiss: (() -> Void)?
@@ -197,7 +194,6 @@ struct NotesView: View {
     
     var body: some View {
         ZStack {
-            // Premium gradient background
             LinearGradient(
                 colors: [
                     Color(UIColor.systemBackground),
@@ -209,9 +205,7 @@ struct NotesView: View {
             .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Enhanced Header
                 ZStack {
-                    // Glassmorphism effect
                     Rectangle()
                         .fill(.ultraThinMaterial)
                         .overlay(
@@ -407,7 +401,6 @@ struct NotesView: View {
                 }
             }
             
-            // Premium Floating Action Button
             VStack {
                 Spacer()
                 HStack {
@@ -419,7 +412,6 @@ struct NotesView: View {
                         }
                     }) {
                         ZStack {
-                            // Glow effect
                             Circle()
                                 .fill(
                                     RadialGradient(
@@ -434,7 +426,6 @@ struct NotesView: View {
                                 )
                                 .frame(width: 90, height: 90)
                             
-                            // Main button
                             Circle()
                                 .fill(
                                     LinearGradient(
@@ -470,7 +461,7 @@ struct NotesView: View {
     }
 }
 
-// MARK: - Premium Note Card
+// MARK: - Note Card
 struct PremiumNoteCard: View {
     let note: Note
     @State private var isPressed = false
@@ -498,7 +489,6 @@ struct PremiumNoteCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                // Left accent bar
                 if note.isPinned {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(
@@ -512,7 +502,6 @@ struct PremiumNoteCard: View {
                 }
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    // Title row with icons
                     HStack(spacing: 8) {
                         if note.hasAudio {
                             ZStack {
@@ -546,7 +535,6 @@ struct PremiumNoteCard: View {
                         }
                     }
                     
-                    // Preview text
                     if !note.displayPreview.isEmpty {
                         Text(note.displayPreview)
                             .font(.system(size: 15))
@@ -555,7 +543,6 @@ struct PremiumNoteCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     
-                    // Metadata row
                     HStack(spacing: 8) {
                         HStack(spacing: 4) {
                             Image(systemName: "clock")
@@ -644,7 +631,6 @@ struct PremiumNoteCard: View {
         .padding(.vertical, 6)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
         .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 50) {
-            // Long press handled
         } onPressingChanged: { pressing in
             isPressed = pressing
         }
@@ -900,9 +886,7 @@ struct NoteEditorView: View {
                 Color(UIColor.systemBackground).ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Audio Recording/Playback Section
                     if audioRecorder.isRecording {
-                        // Recording UI
                         VStack(spacing: 12) {
                             HStack(spacing: 8) {
                                 Circle()
@@ -937,7 +921,6 @@ struct NoteEditorView: View {
                         .padding()
                         .background(Color(UIColor.secondarySystemBackground))
                     } else if let fileName = audioFileName {
-                        // Audio Player UI
                         VStack(spacing: 12) {
                             HStack(spacing: 8) {
                                 Image(systemName: "waveform")
@@ -1002,7 +985,6 @@ struct NoteEditorView: View {
                         .background(Color(UIColor.secondarySystemBackground))
                     }
                     
-                    // Metadata Section (Collapsible)
                     VStack(spacing: 0) {
                         Button(action: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -1038,7 +1020,6 @@ struct NoteEditorView: View {
                         
                         if showingMetadata {
                             VStack(spacing: 12) {
-                                // Sponsoring Thought
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text("Sponsoring Thought")
                                         .font(.caption)
@@ -1056,7 +1037,6 @@ struct NoteEditorView: View {
                                         .focused($focusedField, equals: .sponsoringThought)
                                 }
                                 
-                                // Creation Context
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text("Surrounding Context")
                                         .font(.caption)
@@ -1083,7 +1063,6 @@ struct NoteEditorView: View {
                         Divider()
                     }
                     
-                    // Text Editor
                     TextEditor(text: $content)
                         .font(.body)
                         .foregroundColor(.primary)
@@ -1111,7 +1090,6 @@ struct NoteEditorView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 12) {
-                        // Voice recording button
                         if !audioRecorder.isRecording && audioFileName == nil {
                             Button(action: {
                                 requestMicrophonePermission()
@@ -1213,10 +1191,8 @@ struct NoteEditorView: View {
     }
     
     private func saveNote() {
-        // Don't save completely empty notes
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // If note is completely empty (no content and no audio), don't save or delete if existing
         if trimmedContent.isEmpty && audioFileName == nil {
             if let note = note {
                 notesManager.deleteNote(note)
@@ -1224,14 +1200,12 @@ struct NoteEditorView: View {
             return
         }
         
-        // Prepare metadata (nil if empty)
         let trimmedSponsoringThought = sponsoringThought.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedCreationContext = creationContext.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalSponsoringThought: String? = trimmedSponsoringThought.isEmpty ? nil : trimmedSponsoringThought
         let finalCreationContext: String? = trimmedCreationContext.isEmpty ? nil : trimmedCreationContext
         
         if let existingNote = note {
-            // Update existing note
             var updatedNote = existingNote
             updatedNote.content = content
             updatedNote.audioFileName = audioFileName
@@ -1239,7 +1213,6 @@ struct NoteEditorView: View {
             updatedNote.creationContext = finalCreationContext
             notesManager.updateNote(updatedNote)
         } else {
-            // Create new note
             let newNote = Note(
                 content: content,
                 audioFileName: audioFileName,
