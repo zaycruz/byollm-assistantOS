@@ -108,39 +108,36 @@ struct ChatView: View {
                         // Top Bar
                         ZStack {
                             HStack {
-                                // Combined Settings/History/Notes Button - Left
-                                HStack(spacing: 16) {
+                                // Hamburger Menu - Left
+                                Menu {
                                     Button(action: { 
                                         sidePanelView = .settings
                                         showSidePanel = true
                                     }) {
-                                        Image(systemName: "gearshape")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
+                                        Label("Settings", systemImage: "gearshape")
                                     }
                                     
                                     Button(action: { 
                                         sidePanelView = .notes
                                         showSidePanel = true
                                     }) {
-                                        Image(systemName: "note.text")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
+                                        Label("Notes", systemImage: "note.text")
                                     }
                                     
                                     Button(action: { 
                                         sidePanelView = .chatHistory
                                         showSidePanel = true
                                     }) {
-                                        Image(systemName: "message")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
+                                        Label("Conversations", systemImage: "message")
                                     }
+                                } label: {
+                                    Image(systemName: "line.3.horizontal")
+                                        .font(.title2)
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.white.opacity(0.15))
+                                        .clipShape(Circle())
                                 }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(Color.white.opacity(0.15))
-                                .cornerRadius(25)
                                 
                                 Spacer()
                                 
@@ -165,60 +162,6 @@ struct ChatView: View {
                                         .background(Color.white.opacity(0.15))
                                         .clipShape(Circle())
                                 }
-                            }
-                            
-                            // Model Selector - Centered (no background)
-                            Menu {
-                                ForEach(availableModels, id: \.self) { model in
-                                    Button(action: {
-                                        selectedModel = model
-                                    }) {
-                                        HStack {
-                                            Text(formatModelName(model))
-                                            if selectedModel == model {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Show reasoning effort submenu for GPT-oss models
-                                // Check the selectedModel directly instead of conversationManager
-                                if supportsReasoningEffort(for: selectedModel) {
-                                    Divider()
-                                    
-                                    Menu {
-                                        ForEach(ReasoningEffort.allCases, id: \.self) { effort in
-                                            Button(action: {
-                                                reasoningEffort = effort
-                                            }) {
-                                                HStack {
-                                                    Text(effort.displayName)
-                                                    if reasoningEffort == effort {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        HStack {
-                                            Image(systemName: "brain")
-                                            Text("Reasoning: \(reasoningEffort.displayName)")
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Text(formatModelName(selectedModel))
-                                        .font(.body)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -473,26 +416,7 @@ struct WelcomeView: View {
     let fontStyle: ChatView.FontStyle
     
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            
-            VStack(spacing: 16) {
-                Text("Meet AssistantOS")
-                    .font(fontStyle.apply(size: 34, weight: .bold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                
-                Text("BYOLLM - Bring Your Own LLM. Host your own large language models and interact with them seamlessly from your mobile device. Take control of your AI assistant with complete privacy and flexibility.")
-                    .font(fontStyle.apply(size: 17, weight: .regular))
-                    .foregroundColor(.white.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .padding(.horizontal, 32)
-            }
-            .padding(.horizontal, 20)
-            
-            Spacer()
-        }
+        Spacer()
     }
 }
 

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 // MARK: - Note Model
 struct Note: Identifiable, Codable {
@@ -17,7 +18,11 @@ struct Note: Identifiable, Codable {
     var isPinned: Bool
     var audioFileName: String? // For voice notes
     
-    init(id: UUID = UUID(), title: String = "", content: String = "", isPinned: Bool = false, audioFileName: String? = nil) {
+    // Optional metadata for LLM context
+    var sponsoringThought: String? // The main idea or reason behind creating this note
+    var creationContext: String? // The surrounding context behind its creation
+    
+    init(id: UUID = UUID(), title: String = "", content: String = "", isPinned: Bool = false, audioFileName: String? = nil, sponsoringThought: String? = nil, creationContext: String? = nil) {
         self.id = id
         self.title = title
         self.content = content
@@ -25,10 +30,18 @@ struct Note: Identifiable, Codable {
         self.modifiedAt = Date()
         self.isPinned = isPinned
         self.audioFileName = audioFileName
+        self.sponsoringThought = sponsoringThought
+        self.creationContext = creationContext
     }
     
     var hasAudio: Bool {
         audioFileName != nil
+    }
+    
+    var hasMetadata: Bool {
+        let hasSponsoringThought = !(sponsoringThought?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasContext = !(creationContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        return hasSponsoringThought || hasContext
     }
     
     // Computed property for the first line (used as title)
@@ -147,7 +160,9 @@ struct NotesView: View {
     @State private var selectedNote: Note?
     @State private var searchText = ""
     @State private var showingNoteEditor = false
+    @State private var isSearchFocused = false
     @Environment(\.dismiss) var dismiss
+    @Namespace private var animation
     
     // Side panel mode
     var isInSidePanel: Bool = false
@@ -161,7 +176,9 @@ struct NotesView: View {
         }
         return pinned.filter { note in
             note.displayTitle.localizedCaseInsensitiveContains(searchText) ||
-            note.content.localizedCaseInsensitiveContains(searchText)
+            note.content.localizedCaseInsensitiveContains(searchText) ||
+            (note.sponsoringThought?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+            (note.creationContext?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
     }
     
@@ -172,190 +189,278 @@ struct NotesView: View {
         }
         return unpinned.filter { note in
             note.displayTitle.localizedCaseInsensitiveContains(searchText) ||
-            note.content.localizedCaseInsensitiveContains(searchText)
+            note.content.localizedCaseInsensitiveContains(searchText) ||
+            (note.sponsoringThought?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+            (note.creationContext?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
     }
     
     var body: some View {
         ZStack {
-            Color(UIColor.systemGroupedBackground).ignoresSafeArea()
+            // Premium gradient background
+            LinearGradient(
+                colors: [
+                    Color(UIColor.systemBackground),
+                    Color(UIColor.systemBackground).opacity(0.95)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    if isInSidePanel {
-                        Button(action: { onBack?() }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(.body)
-                                    .fontWeight(.semibold)
-                                Text("Back")
-                            }
-                            .foregroundColor(.blue)
-                        }
-                    }
+                // Enhanced Header
+                ZStack {
+                    // Glassmorphism effect
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.1),
+                                    Color.clear
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                     
-                    Spacer()
-                    
-                    Text("Notes")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                    
-                    if !isInSidePanel {
-                        Button(action: { dismiss() }) {
-                            Text("Done")
-                                .fontWeight(.semibold)
-                                .foregroundColor(.blue)
-                        }
-                    } else {
-                        Button(action: { onDismiss?() }) {
-                            Text("Done")
-                                .fontWeight(.semibold)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 12)
-                .background(Color(UIColor.systemGroupedBackground))
-                
-                // Search Bar
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                    
-                    TextField("Search", text: $searchText)
-                        .foregroundColor(.primary)
-                }
-                .padding(8)
-                .background(Color(UIColor.secondarySystemGroupedBackground))
-                .cornerRadius(10)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-                
-                // Notes Count
-                if !notesManager.notes.isEmpty {
-                    HStack {
-                        Text("\(filteredPinnedNotes.count + filteredUnpinnedNotes.count) Note\(filteredPinnedNotes.count + filteredUnpinnedNotes.count == 1 ? "" : "s")")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
-                }
-                
-                // Notes List
-                if filteredPinnedNotes.isEmpty && filteredUnpinnedNotes.isEmpty {
-                    VStack(spacing: 16) {
-                        Spacer()
-                        Image(systemName: searchText.isEmpty ? "note.text" : "magnifyingglass")
-                            .font(.system(size: 60))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        Text(searchText.isEmpty ? "No Notes" : "No Results")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                        if searchText.isEmpty {
-                            Text("Create a note to get started")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary.opacity(0.7))
-                        }
-                        Spacer()
-                    }
-                } else {
-                    List {
-                        // Pinned Notes Section
-                        if !filteredPinnedNotes.isEmpty {
-                            Section(header: Text("Pinned").textCase(.uppercase)) {
-                                ForEach(filteredPinnedNotes) { note in
-                                    NoteRow(note: note)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            selectedNote = note
-                                            showingNoteEditor = true
-                                        }
-                                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                            Button {
-                                                notesManager.togglePin(note)
-                                            } label: {
-                                                Label("Unpin", systemImage: "pin.slash")
-                                            }
-                                            .tint(.orange)
-                                        }
-                                        .swipeActions(edge: .trailing) {
-                                            Button(role: .destructive) {
-                                                notesManager.deleteNote(note)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                            }
-                                        }
+                    HStack(spacing: 16) {
+                        if isInSidePanel {
+                            Button(action: { 
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    onBack?()
                                 }
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.body.weight(.semibold))
+                                    Text("Back")
+                                        .font(.body)
+                                }
+                                .foregroundStyle(.blue)
                             }
                         }
                         
-                        // Regular Notes Section
-                        if !filteredUnpinnedNotes.isEmpty {
-                            Section(header: filteredPinnedNotes.isEmpty ? AnyView(EmptyView()) : AnyView(Text("Notes").textCase(.uppercase))) {
-                                ForEach(filteredUnpinnedNotes) { note in
-                                    NoteRow(note: note)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            selectedNote = note
-                                            showingNoteEditor = true
-                                        }
-                                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                            Button {
-                                                notesManager.togglePin(note)
-                                            } label: {
-                                                Label("Pin", systemImage: "pin")
-                                            }
-                                            .tint(.yellow)
-                                        }
-                                        .swipeActions(edge: .trailing) {
-                                            Button(role: .destructive) {
-                                                notesManager.deleteNote(note)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                            }
-                                        }
+                        Spacer()
+                        
+                        VStack(spacing: 2) {
+                            Text("Notes")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.primary, .primary.opacity(0.8)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                            
+                            if !notesManager.notes.isEmpty {
+                                Text("\(filteredPinnedNotes.count + filteredUnpinnedNotes.count) note\(filteredPinnedNotes.count + filteredUnpinnedNotes.count == 1 ? "" : "s")")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if isInSidePanel {
+                                    onDismiss?()
+                                } else {
+                                    dismiss()
                                 }
+                            }
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .frame(width: 36, height: 36)
+                                
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
-                    .listStyle(.insetGrouped)
-                    .scrollContentBackground(.hidden)
-                    .background(Color(UIColor.systemGroupedBackground))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                }
+                .frame(height: 80)
+                
+                // Search Bar
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Search notes...", text: $searchText)
+                        .font(.system(size: 15))
+                        .foregroundColor(.primary)
+                    
+                    if !searchText.isEmpty {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3)) {
+                                searchText = ""
+                            }
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemBackground))
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+                
+                // Notes List
+                if filteredPinnedNotes.isEmpty && filteredUnpinnedNotes.isEmpty {
+                    EmptyNotesView(searchText: searchText, onCreate: {
+                        selectedNote = nil
+                        showingNoteEditor = true
+                    })
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            // Pinned Notes Section
+                            if !filteredPinnedNotes.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack {
+                                        Image(systemName: "pin.fill")
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                        Text("PINNED")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 8)
+                                    
+                                    ForEach(filteredPinnedNotes) { note in
+                                        PremiumNoteCard(note: note)
+                                            .onTapGesture {
+                                                selectedNote = note
+                                                showingNoteEditor = true
+                                            }
+                                            .contextMenu {
+                                                Button(action: { notesManager.togglePin(note) }) {
+                                                    Label("Unpin", systemImage: "pin.slash")
+                                                }
+                                                Button(role: .destructive, action: { notesManager.deleteNote(note) }) {
+                                                    Label("Delete", systemImage: "trash")
+                                                }
+                                            }
+                                            .transition(.asymmetric(
+                                                insertion: .scale.combined(with: .opacity),
+                                                removal: .scale.combined(with: .opacity)
+                                            ))
+                                    }
+                                }
+                                .padding(.bottom, 24)
+                            }
+                            
+                            // Regular Notes Section
+                            if !filteredUnpinnedNotes.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    if !filteredPinnedNotes.isEmpty {
+                                        Text("NOTES")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal, 20)
+                                            .padding(.top, 8)
+                                    }
+                                    
+                                    ForEach(filteredUnpinnedNotes) { note in
+                                        PremiumNoteCard(note: note)
+                                            .onTapGesture {
+                                                selectedNote = note
+                                                showingNoteEditor = true
+                                            }
+                                            .contextMenu {
+                                                Button(action: { notesManager.togglePin(note) }) {
+                                                    Label("Pin", systemImage: "pin")
+                                                }
+                                                Button(role: .destructive, action: { notesManager.deleteNote(note) }) {
+                                                    Label("Delete", systemImage: "trash")
+                                                }
+                                            }
+                                            .transition(.asymmetric(
+                                                insertion: .scale.combined(with: .opacity),
+                                                removal: .scale.combined(with: .opacity)
+                                            ))
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.top, 8)
+                        .padding(.bottom, 100)
+                    }
+                    .scrollIndicators(.hidden)
                 }
             }
             
-            // Floating Action Button (Apple Notes style)
+            // Premium Floating Action Button
             VStack {
                 Spacer()
                 HStack {
                     Spacer()
                     Button(action: {
-                        selectedNote = nil
-                        showingNoteEditor = true
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                            selectedNote = nil
+                            showingNoteEditor = true
+                        }
                     }) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .frame(width: 56, height: 56)
-                            .background(Color.orange)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        ZStack {
+                            // Glow effect
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [
+                                            Color.orange.opacity(0.6),
+                                            Color.orange.opacity(0.0)
+                                        ],
+                                        center: .center,
+                                        startRadius: 28,
+                                        endRadius: 45
+                                    )
+                                )
+                                .frame(width: 90, height: 90)
+                            
+                            // Main button
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.orange,
+                                            Color.orange.opacity(0.9)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 64, height: 64)
+                                .shadow(color: .orange.opacity(0.4), radius: 20, x: 0, y: 10)
+                            
+                            Image(systemName: "plus")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
                     }
-                    .padding(.trailing, 24)
-                    .padding(.bottom, 24)
+                    .padding(.trailing, 28)
+                    .padding(.bottom, 28)
                 }
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: filteredPinnedNotes.count)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: filteredUnpinnedNotes.count)
         .sheet(isPresented: $showingNoteEditor) {
             NoteEditorView(
                 notesManager: notesManager,
@@ -365,9 +470,10 @@ struct NotesView: View {
     }
 }
 
-// MARK: - Note Row
-struct NoteRow: View {
+// MARK: - Premium Note Card
+struct PremiumNoteCard: View {
     let note: Note
+    @State private var isPressed = false
     
     private var timeAgoText: String {
         let calendar = Calendar.current
@@ -390,56 +496,244 @@ struct NoteRow: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                if note.hasAudio {
-                    Image(systemName: "waveform")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                }
-                Text(note.displayTitle)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                // Left accent bar
                 if note.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption)
-                        .foregroundColor(.orange)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(
+                            LinearGradient(
+                                colors: [.orange, .orange.opacity(0.7)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 4, height: 60)
                 }
-            }
-            
-            if !note.displayPreview.isEmpty {
-                Text(note.displayPreview)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            HStack {
-                Text(timeAgoText)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
                 
-                if !note.displayPreview.isEmpty || note.hasAudio {
-                    Text("•")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    // Title row with icons
+                    HStack(spacing: 8) {
+                        if note.hasAudio {
+                            ZStack {
+                                Circle()
+                                    .fill(.blue.opacity(0.1))
+                                    .frame(width: 24, height: 24)
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.blue, .blue.opacity(0.7)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                            }
+                        }
+                        
+                        Text(note.displayTitle)
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                        
+                        Spacer()
+                        
+                        if note.isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.orange)
+                                .rotationEffect(.degrees(45))
+                        }
+                    }
                     
-                    if note.hasAudio && !note.content.isEmpty {
-                        Text("Voice note")
-                            .font(.caption)
+                    // Preview text
+                    if !note.displayPreview.isEmpty {
+                        Text(note.displayPreview)
+                            .font(.system(size: 15))
                             .foregroundColor(.secondary)
-                    } else if !note.content.isEmpty {
-                        let wordCount = note.content.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
-                        Text("\(wordCount) word\(wordCount == 1 ? "" : "s")")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    
+                    // Metadata row
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 10, weight: .medium))
+                            Text(timeAgoText)
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(.secondary.opacity(0.8))
+                        
+                        if !note.content.isEmpty || note.hasAudio || note.hasMetadata {
+                            Circle()
+                                .fill(.secondary.opacity(0.5))
+                                .frame(width: 3, height: 3)
+                            
+                            if note.hasAudio && !note.content.isEmpty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "mic.fill")
+                                        .font(.system(size: 10, weight: .medium))
+                                    Text("Voice")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(.blue.opacity(0.8))
+                            } else if !note.content.isEmpty {
+                                let wordCount = note.content.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+                                Text("\(wordCount) word\(wordCount == 1 ? "" : "s")")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.secondary.opacity(0.8))
+                            }
+                            
+                            if note.hasMetadata {
+                                Circle()
+                                    .fill(.secondary.opacity(0.5))
+                                    .frame(width: 3, height: 3)
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "brain.head.profile")
+                                        .font(.system(size: 10, weight: .medium))
+                                    Text("Context")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(.purple.opacity(0.8))
+                            }
+                        }
                     }
                 }
+                .padding(.leading, !note.isPinned ? 16 : 0)
+                .padding(.vertical, 16)
+                .padding(.trailing, 16)
             }
         }
-        .padding(.vertical, 4)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.1),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.2),
+                            Color.clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: .black.opacity(isPressed ? 0.1 : 0.05), radius: isPressed ? 5 : 10, x: 0, y: isPressed ? 2 : 5)
+        .scaleEffect(isPressed ? 0.98 : 1.0)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 6)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 50) {
+            // Long press handled
+        } onPressingChanged: { pressing in
+            isPressed = pressing
+        }
+    }
+}
+
+// MARK: - Empty Notes View
+struct EmptyNotesView: View {
+    let searchText: String
+    let onCreate: () -> Void
+    @State private var animationAmount = 0.0
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.orange.opacity(0.2),
+                                Color.orange.opacity(0.0)
+                            ],
+                            center: .center,
+                            startRadius: 40,
+                            endRadius: 80
+                        )
+                    )
+                    .frame(width: 160, height: 160)
+                    .scaleEffect(animationAmount)
+                    .opacity(2 - animationAmount)
+                
+                Image(systemName: searchText.isEmpty ? "note.text" : "magnifyingglass")
+                    .font(.system(size: 70, weight: .thin))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                .orange.opacity(0.7),
+                                .orange.opacity(0.5)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            
+            VStack(spacing: 12) {
+                Text(searchText.isEmpty ? "No Notes Yet" : "No Results Found")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                
+                Text(searchText.isEmpty ? "Tap the + button to create your first note" : "Try adjusting your search")
+                    .font(.system(size: 16))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+            
+            if searchText.isEmpty {
+                Button(action: onCreate) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                        Text("Create Note")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .background(
+                        LinearGradient(
+                            colors: [.orange, .orange.opacity(0.9)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(14, antialiased: true)
+                    .shadow(color: .orange.opacity(0.4), radius: 12, x: 0, y: 6)
+                }
+            }
+            
+            Spacer()
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                animationAmount = 2.0
+            }
+        }
     }
 }
 
@@ -564,14 +858,23 @@ struct NoteEditorView: View {
     @StateObject private var audioPlayer = AudioPlayer()
     @State private var content: String
     @State private var audioFileName: String?
+    @State private var sponsoringThought: String
+    @State private var creationContext: String
+    @State private var showingMetadata: Bool
     @State private var showingDeleteAlert = false
     @State private var showingShareSheet = false
     @State private var showingAudioPermissionAlert = false
     @Environment(\.dismiss) var dismiss
-    @FocusState private var isFocused: Bool
+    @FocusState private var focusedField: EditorField?
     
     private let note: Note?
     private let isNewNote: Bool
+    
+    enum EditorField {
+        case content
+        case sponsoringThought
+        case creationContext
+    }
     
     init(notesManager: NotesManager, note: Note?) {
         self.notesManager = notesManager
@@ -580,6 +883,9 @@ struct NoteEditorView: View {
         
         _content = State(initialValue: note?.content ?? "")
         _audioFileName = State(initialValue: note?.audioFileName)
+        _sponsoringThought = State(initialValue: note?.sponsoringThought ?? "")
+        _creationContext = State(initialValue: note?.creationContext ?? "")
+        _showingMetadata = State(initialValue: note?.hasMetadata ?? false)
     }
     
     private func formatTime(_ time: TimeInterval) -> String {
@@ -696,11 +1002,92 @@ struct NoteEditorView: View {
                         .background(Color(UIColor.secondarySystemBackground))
                     }
                     
+                    // Metadata Section (Collapsible)
+                    VStack(spacing: 0) {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                showingMetadata.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "brain.head.profile")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.purple)
+                                
+                                Text("LLM Context")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.primary)
+                                
+                                if !sponsoringThought.isEmpty || !creationContext.isEmpty {
+                                    Circle()
+                                        .fill(.purple)
+                                        .frame(width: 6, height: 6)
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: showingMetadata ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color(UIColor.secondarySystemBackground))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        if showingMetadata {
+                            VStack(spacing: 12) {
+                                // Sponsoring Thought
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Sponsoring Thought")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.secondary)
+                                    
+                                    TextField("What prompted this note?", text: $sponsoringThought, axis: .vertical)
+                                        .font(.system(size: 15))
+                                        .lineLimit(2...4)
+                                        .padding(10)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Color(UIColor.tertiarySystemBackground))
+                                        )
+                                        .focused($focusedField, equals: .sponsoringThought)
+                                }
+                                
+                                // Creation Context
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Surrounding Context")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.secondary)
+                                    
+                                    TextField("What were you doing, thinking about, or working on?", text: $creationContext, axis: .vertical)
+                                        .font(.system(size: 15))
+                                        .lineLimit(2...4)
+                                        .padding(10)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Color(UIColor.tertiarySystemBackground))
+                                        )
+                                        .focused($focusedField, equals: .creationContext)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                        
+                        Divider()
+                    }
+                    
                     // Text Editor
                     TextEditor(text: $content)
                         .font(.body)
                         .foregroundColor(.primary)
-                        .focused($isFocused)
+                        .focused($focusedField, equals: .content)
                         .padding(.horizontal, 16)
                         .scrollContentBackground(.hidden)
                         .background(Color(UIColor.systemBackground))
@@ -799,7 +1186,7 @@ struct NoteEditorView: View {
         }
         .onAppear {
             if isNewNote {
-                isFocused = true
+                focusedField = .content
             }
         }
         .onDisappear {
@@ -837,15 +1224,28 @@ struct NoteEditorView: View {
             return
         }
         
+        // Prepare metadata (nil if empty)
+        let trimmedSponsoringThought = sponsoringThought.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCreationContext = creationContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalSponsoringThought: String? = trimmedSponsoringThought.isEmpty ? nil : trimmedSponsoringThought
+        let finalCreationContext: String? = trimmedCreationContext.isEmpty ? nil : trimmedCreationContext
+        
         if let existingNote = note {
             // Update existing note
             var updatedNote = existingNote
             updatedNote.content = content
             updatedNote.audioFileName = audioFileName
+            updatedNote.sponsoringThought = finalSponsoringThought
+            updatedNote.creationContext = finalCreationContext
             notesManager.updateNote(updatedNote)
         } else {
             // Create new note
-            let newNote = Note(content: content, audioFileName: audioFileName)
+            let newNote = Note(
+                content: content,
+                audioFileName: audioFileName,
+                sponsoringThought: finalSponsoringThought,
+                creationContext: finalCreationContext
+            )
             notesManager.addNote(newNote)
         }
     }
