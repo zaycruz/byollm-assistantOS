@@ -50,6 +50,7 @@ class ConversationManager: ObservableObject {
     var serverAddress: String?
     var systemPrompt: String?
     var selectedModel: String = "qwen2.5:latest"
+    var provider: String = "local"  // "local" (Ollama/vLLM) or "cloud" (Anthropic)
     var safetyLevel: String = "medium"
     var reasoningEffort: String = "medium"  // New property for reasoning effort
     private var currentTask: Task<Void, Never>?  // Track the current generation task
@@ -251,9 +252,10 @@ class ConversationManager: ObservableObject {
                     )
                 }
                 
-                print("📤 Sending \(apiMessages.count) messages to API")
-                print("🤖 Using model: \(selectedModel)")
-                print("⚙️ Safety level: \(safetyLevel)")
+                print("Sending \(apiMessages.count) messages to API")
+                print("Using model: \(selectedModel)")
+                print("Provider: \(provider)")
+                print("Safety level: \(safetyLevel)")
                 
                 var accumulatedResponse = ""
                 var accumulatedReasoning = ""
@@ -275,6 +277,7 @@ class ConversationManager: ObservableObject {
                     model: selectedModel,
                     messages: Array(apiMessages),
                     systemPrompt: systemPrompt,
+                    provider: provider,
                     safetyLevel: safetyLevel,
                     temperature: 0.7,
                     reasoningEffort: effectiveReasoningEffort,

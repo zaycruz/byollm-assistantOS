@@ -20,10 +20,30 @@ struct ChatView: View {
     @State private var selectedFontStyle: FontStyle = .system
     @State private var selectedModel = "gpt-oss:latest"
     @State private var availableModels: [String] = ["gpt-oss:latest"]
+    @State private var cloudModels: [String] = ["claude-sonnet-4-5"]
     @State private var safetyLevel: SafetyLevel = .medium
     @State private var reasoningEffort: ReasoningEffort = .medium
+    @State private var provider: Provider = .local
+    
+    // Computed property for current available models based on provider
+    private var currentAvailableModels: [String] {
+        provider == .cloud ? cloudModels : availableModels
+    }
     @State private var keyboardHeight: CGFloat = 0
+    @State private var inputTextHeight: CGFloat = 36
     @FocusState private var isInputFocused: Bool
+    
+    enum Provider: String, CaseIterable {
+        case local = "local"
+        case cloud = "cloud"
+        
+        var displayName: String {
+            switch self {
+            case .local: return "Local"
+            case .cloud: return "Cloud"
+            }
+        }
+    }
     
     enum SafetyLevel: String, CaseIterable {
         case low = "low"
@@ -160,7 +180,7 @@ struct ChatView: View {
                             
                             // Model Selector - Centered (no background)
                             Menu {
-                                ForEach(availableModels, id: \.self) { model in
+                                ForEach(currentAvailableModels, id: \.self) { model in
                                     Button(action: {
                                         selectedModel = model
                                     }) {
@@ -226,7 +246,7 @@ struct ChatView: View {
                         // Input Area
                         VStack(spacing: 12) {
                             // Input Field
-                            HStack(spacing: 12) {
+                            HStack(alignment: .bottom, spacing: 12) {
                                 Button(action: {}) {
                                     Image(systemName: "plus")
                                         .font(.title2)
@@ -236,16 +256,50 @@ struct ChatView: View {
                                         .clipShape(Circle())
                                 }
                                 
-                                HStack {
-                                    TextField("Ask anything", text: $inputText)
-                                        .foregroundColor(.white)
-                                        .focused($isInputFocused)
-                                        .submitLabel(.send)
-                                        .onSubmit {
-                                            sendMessage()
+                                HStack(alignment: .bottom, spacing: 8) {
+                                    ZStack(alignment: .topLeading) {
+                                        // Placeholder text
+                                        if inputText.isEmpty {
+                                            Text("Ask anything")
+                                                .foregroundColor(.white.opacity(0.5))
+                                                .padding(.horizontal, 4)
+                                                .padding(.top, 8)
                                         }
-                                        .disabled(conversationManager.isLoading)
+                                        
+                                        // Multiline text editor
+                                        TextEditor(text: $inputText)
+                                            .foregroundColor(.white)
+                                            .focused($isInputFocused)
+                                            .scrollContentBackground(.hidden)
+                                            .background(Color.clear)
+                                            .frame(height: inputTextHeight)
+                                            .padding(.horizontal, -4)
+                                            .padding(.vertical, -8)
+                                            .disabled(conversationManager.isLoading)
+                                            .onChange(of: inputText) { oldValue, newValue in
+                                                // Limit text length if needed
+                                                if newValue.count > 10000 {
+                                                    inputText = String(newValue.prefix(10000))
+                                                }
+                                                
+                                                // Calculate height based on content
+                                                // Account for both explicit newlines and text wrapping
+                                                if newValue.isEmpty {
+                                                    inputTextHeight = 36
+                                                } else {
+                                                    // Estimate lines: explicit newlines + estimated wrapped lines
+                                                    let explicitLines = newValue.components(separatedBy: .newlines).count
+                                                    // Rough estimate: ~30 characters per line (accounting for padding)
+                                                    let estimatedWrappedLines = max(1, Int(ceil(Double(newValue.replacingOccurrences(of: "\n", with: "").count) / 30.0)))
+                                                    let totalLines = max(explicitLines, estimatedWrappedLines)
+                                                    let estimatedHeight = CGFloat(totalLines) * 22.0 + 12.0
+                                                    inputTextHeight = min(max(36, estimatedHeight), 120)
+                                                }
+                                            }
+                                    }
+                                    .frame(height: inputTextHeight)
                                     
+                                    // Action button (send or stop)
                                     if conversationManager.isLoading {
                                         // Stop button when loading
                                         Button(action: { 
@@ -255,12 +309,14 @@ struct ChatView: View {
                                                 .font(.title2)
                                                 .foregroundColor(.red)
                                         }
+                                        .padding(.bottom, 4)
                                     } else if !inputText.isEmpty {
                                         Button(action: { sendMessage() }) {
                                             Image(systemName: "arrow.up.circle.fill")
                                                 .font(.title2)
                                                 .foregroundColor(.white)
                                         }
+                                        .padding(.bottom, 4)
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -293,6 +349,7 @@ struct ChatView: View {
                         selectedTheme: $selectedTheme,
                         selectedFontStyle: $selectedFontStyle,
                         safetyLevel: $safetyLevel,
+                        provider: $provider,
                         isInSidePanel: false,
                         onBack: {
                             showSidePanel = false
@@ -323,7 +380,7 @@ struct ChatView: View {
                 conversationManager.serverAddress = savedAddress
             }
             
-            // Load saved selected model
+            // Load saved selected model (will be validated after provider is loaded)
             if let savedModel = UserDefaults.standard.string(forKey: "selectedModel") {
                 selectedModel = savedModel
                 conversationManager.selectedModel = savedModel
@@ -344,6 +401,24 @@ struct ChatView: View {
                let effort = ReasoningEffort(rawValue: savedEffort) {
                 reasoningEffort = effort
                 conversationManager.reasoningEffort = effort.rawValue
+            }
+            
+            // Load saved provider
+            if let savedProvider = UserDefaults.standard.string(forKey: "provider"),
+               let providerValue = Provider(rawValue: savedProvider) {
+                provider = providerValue
+                conversationManager.provider = providerValue.rawValue
+            } else {
+                // Sync the default provider to conversation manager
+                conversationManager.provider = provider.rawValue
+            }
+            
+            // Validate selected model against current provider
+            if provider == .cloud {
+                if !cloudModels.contains(selectedModel) {
+                    selectedModel = cloudModels.first ?? "claude-sonnet-4-5"
+                    conversationManager.selectedModel = selectedModel
+                }
             }
             
             if showKeyboardOnLaunch {
@@ -398,12 +473,30 @@ struct ChatView: View {
             conversationManager.reasoningEffort = newValue.rawValue
             UserDefaults.standard.set(newValue.rawValue, forKey: "reasoningEffort")
         }
+        .onChange(of: provider) { oldValue, newValue in
+            conversationManager.provider = newValue.rawValue
+            UserDefaults.standard.set(newValue.rawValue, forKey: "provider")
+            
+            // Switch to appropriate model for the provider
+            if newValue == .cloud {
+                // Switch to first cloud model
+                if !cloudModels.contains(selectedModel) {
+                    selectedModel = cloudModels.first ?? "claude-sonnet-4-5"
+                }
+            } else {
+                // Switch to first local model
+                if !availableModels.contains(selectedModel) {
+                    selectedModel = availableModels.first ?? "gpt-oss:latest"
+                }
+            }
+        }
     }
     
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         conversationManager.sendMessage(inputText)
         inputText = ""
+        inputTextHeight = 36
     }
     
     private func formatModelName(_ modelName: String) -> String {
@@ -945,6 +1038,7 @@ struct SidePanelContainerView: View {
     @Binding var selectedTheme: ChatView.AppTheme
     @Binding var selectedFontStyle: ChatView.FontStyle
     @Binding var safetyLevel: ChatView.SafetyLevel
+    @Binding var provider: ChatView.Provider
     @Binding var currentView: SidePanelContentView
     @Binding var isPresented: Bool
     
@@ -973,6 +1067,7 @@ struct SidePanelContainerView: View {
                     selectedTheme: $selectedTheme,
                     selectedFontStyle: $selectedFontStyle,
                     safetyLevel: $safetyLevel,
+                    provider: $provider,
                     isInSidePanel: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.3)) {

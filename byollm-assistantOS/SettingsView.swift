@@ -16,6 +16,7 @@ struct SettingsView: View {
     @Binding var selectedTheme: ChatView.AppTheme
     @Binding var selectedFontStyle: ChatView.FontStyle
     @Binding var safetyLevel: ChatView.SafetyLevel
+    @Binding var provider: ChatView.Provider
     @State private var showingDeleteAlert = false
     @State private var showingPersonalization = false
     @State private var editingServerAddress: String = ""
@@ -139,7 +140,7 @@ struct SettingsView: View {
                                             Spacer()
                                         }
                                         
-                                                        TextField("Enter IP address (e.g., 192.168.1.100:8080)", text: $editingServerAddress)
+                                        TextField("Enter IP address (e.g., 192.168.1.100:8080)", text: $editingServerAddress)
                                             .textFieldStyle(PlainTextFieldStyle())
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 16)
@@ -219,6 +220,37 @@ struct SettingsView: View {
                                         .disabled(editingServerAddress.isEmpty || isTestingConnection)
                                         .opacity(editingServerAddress.isEmpty ? 0.5 : 1.0)
                                     }
+                                    
+                                    Divider()
+                                        .background(Color.white.opacity(0.2))
+                                    
+                                    // Model Provider Picker (Local/Cloud)
+                                    HStack(spacing: 16) {
+                                        Image(systemName: provider == .local ? "server.rack" : "cloud")
+                                            .font(.title3)
+                                            .foregroundColor(.white)
+                                            .frame(width: 24)
+                                        
+                                        Text("Model Provider")
+                                            .foregroundColor(.white)
+                                            .font(.body)
+                                        
+                                        Spacer()
+                                        
+                                        Picker("", selection: $provider) {
+                                            ForEach(ChatView.Provider.allCases, id: \.self) { providerOption in
+                                                Text(providerOption.displayName).tag(providerOption)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                        .frame(width: 140)
+                                    }
+                                    
+                                    // Provider description
+                                    Text(provider == .local ? "Uses local models (Ollama/vLLM)" : "Uses cloud models (Anthropic)")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                        .padding(.leading, 40)
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 16)

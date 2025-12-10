@@ -16,6 +16,7 @@ struct ChatMessage: Codable {
 struct ChatRequest: Codable {
     let model: String
     let messages: [ChatMessage]
+    let provider: String?
     let temperature: Double?
     let maxTokens: Int?
     let stream: Bool
@@ -25,7 +26,7 @@ struct ChatRequest: Codable {
     let includeReasoning: Bool?  // Request reasoning content in response
     
     enum CodingKeys: String, CodingKey {
-        case model, messages, temperature, stream
+        case model, messages, provider, temperature, stream
         case maxTokens = "max_tokens"
         case safetyLevel = "safety_level"
         case reasoningEffort = "reasoning_effort"
@@ -34,9 +35,10 @@ struct ChatRequest: Codable {
     }
     
     // Initialize without max_tokens by setting it to nil
-    init(model: String, messages: [ChatMessage], temperature: Double?, stream: Bool, safetyLevel: String?, reasoningEffort: String? = nil, conversationId: String? = nil, includeReasoning: Bool? = nil) {
+    init(model: String, messages: [ChatMessage], provider: String? = nil, temperature: Double?, stream: Bool, safetyLevel: String?, reasoningEffort: String? = nil, conversationId: String? = nil, includeReasoning: Bool? = nil) {
         self.model = model
         self.messages = messages
+        self.provider = provider
         self.temperature = temperature
         self.maxTokens = nil  // Remove token limit
         self.stream = stream
@@ -212,6 +214,7 @@ class NetworkManager {
         model: String,
         messages: [ChatMessage],
         systemPrompt: String? = nil,
+        provider: String? = nil,
         safetyLevel: String? = nil,
         temperature: Double = 0.7,
         reasoningEffort: String? = nil,
@@ -241,6 +244,7 @@ class NetworkManager {
         let chatRequest = ChatRequest(
             model: model,
             messages: allMessages,
+            provider: provider,
             temperature: temperature,
             stream: false,
             safetyLevel: safetyLevel,
@@ -254,7 +258,7 @@ class NetworkManager {
         // Debug: Print the actual JSON being sent
         if let jsonData = request.httpBody,
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("📤 Sending request to server:")
+            print("Sending request to server:")
             print(jsonString)
         }
         
@@ -283,6 +287,7 @@ class NetworkManager {
         model: String,
         messages: [ChatMessage],
         systemPrompt: String? = nil,
+        provider: String? = nil,
         safetyLevel: String? = nil,
         temperature: Double = 0.7,
         reasoningEffort: String? = nil,
@@ -314,6 +319,7 @@ class NetworkManager {
         let chatRequest = ChatRequest(
             model: model,
             messages: allMessages,
+            provider: provider,
             temperature: temperature,
             stream: true,
             safetyLevel: safetyLevel,
@@ -327,7 +333,7 @@ class NetworkManager {
         // Debug: Print the actual JSON being sent
         if let jsonData = request.httpBody,
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("📤 Sending streaming request to server:")
+            print("Sending streaming request to server:")
             print(jsonString)
         }
         
