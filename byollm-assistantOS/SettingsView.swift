@@ -13,10 +13,9 @@ struct SettingsView: View {
     @Binding var showKeyboardOnLaunch: Bool
     @Binding var serverAddress: String
     @Binding var systemPrompt: String
-    @Binding var selectedTheme: ChatView.AppTheme
-    @Binding var selectedFontStyle: ChatView.FontStyle
     @Binding var safetyLevel: ChatView.SafetyLevel
     @Binding var provider: ChatView.Provider
+    @AppStorage("appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
     @State private var showingDeleteAlert = false
     @State private var showingPersonalization = false
     @State private var editingServerAddress: String = ""
@@ -37,19 +36,19 @@ struct SettingsView: View {
         
         var color: Color {
             switch self {
-            case .disconnected: return .gray
-            case .connecting: return .yellow
-            case .connected: return .green
-            case .failed: return .red
+            case .disconnected: return DesignSystem.Colors.textTertiary
+            case .connecting: return DesignSystem.Colors.warning
+            case .connected: return DesignSystem.Colors.success
+            case .failed: return DesignSystem.Colors.error
             }
         }
         
         var text: String {
             switch self {
-            case .disconnected: return "Not Connected"
-            case .connecting: return "Connecting..."
-            case .connected: return "Connected"
-            case .failed: return "Connection Failed"
+            case .disconnected: return "OFFLINE"
+            case .connecting: return "CONNECTING..."
+            case .connected: return "CONNECTED"
+            case .failed: return "FAILED"
             }
         }
         
@@ -64,9 +63,9 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                NatureTechBackground().ignoresSafeArea()
                     .onTapGesture {
                         isServerFieldFocused = false
                     }
@@ -77,24 +76,19 @@ struct SettingsView: View {
                         if isInSidePanel {
                             Button(action: { onBack?() }) {
                                 Image(systemName: "chevron.left")
-                                    .font(.title3)
-                                    .foregroundColor(.white)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
                                     .frame(width: 44, height: 44)
-                                    .background(Color.white.opacity(0.1))
-                                    .clipShape(Circle())
                             }
-                        } else {
-                            Spacer()
                         }
                         
                         Text("Settings")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
+                            .font(DesignSystem.Typography.body().weight(.semibold))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
                         
                         Spacer()
                         
-                        Button(action: { 
+                        Button(action: {
                             if isInSidePanel {
                                 onDismiss?()
                             } else {
@@ -102,51 +96,48 @@ struct SettingsView: View {
                             }
                         }) {
                             Image(systemName: "xmark")
-                                .font(.title3)
-                                .foregroundColor(.white)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
                                 .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.1))
-                                .clipShape(Circle())
                         }
-                        .padding(.trailing, 20)
                     }
-                    .padding(.top, 20)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 12)
+                    .background(DesignSystem.Colors.chrome.opacity(0.98))
+                    .overlay(
+                        Rectangle()
+                            .frame(height: 0.5)
+                            .foregroundStyle(DesignSystem.Colors.separator),
+                        alignment: .bottom
+                    )
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 32) {
                         // Server Connection Section
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Server Connection")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
+                        VStack(alignment: .leading, spacing: 10) {
+                            DSSectionHeader(title: "Connection")
                                 .padding(.horizontal, 20)
-                                .padding(.bottom, 12)
                             
                             VStack(spacing: 0) {
                                 VStack(alignment: .leading, spacing: 16) {
                                     // Server Address Field
                                     VStack(alignment: .leading, spacing: 8) {
-                                        HStack(spacing: 16) {
-                                            Image(systemName: "network")
-                                                .font(.title3)
-                                                .foregroundColor(.white)
-                                                .frame(width: 24)
-                                            
-                                            Text("Server Address")
-                                                .foregroundColor(.white)
-                                                .font(.body)
-                                            
-                                            Spacer()
-                                        }
+                                        Text("Server address")
+                                            .font(DesignSystem.Typography.caption())
+                                            .foregroundStyle(DesignSystem.Colors.textSecondary)
                                         
-                                        TextField("Enter IP address (e.g., 192.168.1.100:8080)", text: $editingServerAddress)
+                                        TextField("e.g. 192.168.1.100:8080", text: $editingServerAddress)
                                             .textFieldStyle(PlainTextFieldStyle())
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 12)
-                                            .background(Color.white.opacity(0.1))
-                                            .cornerRadius(10)
+                                            .font(DesignSystem.Typography.body())
+                                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                            .padding(12)
+                                            .background(DesignSystem.Colors.surfaceElevated)
+                                            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous)
+                                                    .stroke(isServerFieldFocused ? DesignSystem.Colors.accent : DesignSystem.Colors.border.opacity(0.8), lineWidth: 1)
+                                            )
                                             .focused($isServerFieldFocused)
                                             .keyboardType(.URL)
                                             .autocapitalization(.none)
@@ -157,18 +148,8 @@ struct SettingsView: View {
                                             }
                                             .onChange(of: editingServerAddress) { oldValue, newValue in
                                                 serverAddress = newValue
-                                                // Reset connection status when address changes
                                                 if connectionStatus == .connected {
                                                     connectionStatus = .disconnected
-                                                }
-                                            }
-                                            .toolbar {
-                                                ToolbarItemGroup(placement: .keyboard) {
-                                                    Spacer()
-                                                    Button("Done") {
-                                                        isServerFieldFocused = false
-                                                    }
-                                                    .foregroundColor(.blue)
                                                 }
                                             }
                                     }
@@ -178,11 +159,11 @@ struct SettingsView: View {
                                         // Status Indicator
                                         HStack(spacing: 8) {
                                             Image(systemName: connectionStatus.icon)
-                                                .font(.body)
+                                                .font(.system(size: 12))
                                                 .foregroundColor(connectionStatus.color)
                                             
                                             Text(connectionStatus.text)
-                                                .font(.subheadline)
+                                                .font(DesignSystem.Typography.code())
                                                 .foregroundColor(connectionStatus.color)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -192,115 +173,79 @@ struct SettingsView: View {
                                             HStack(spacing: 6) {
                                                 if isTestingConnection {
                                                     ProgressView()
-                                                        .scaleEffect(0.8)
-                                                        .tint(.white)
+                                                        .scaleEffect(0.6)
+                                                        .tint(DesignSystem.Colors.textPrimary)
                                                 } else {
                                                     Image(systemName: "bolt.fill")
-                                                        .font(.subheadline)
+                                                        .font(.system(size: 12))
                                                 }
                                                 Text("Test")
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
+                                                    .font(DesignSystem.Typography.code())
+                                                    .fontWeight(.bold)
                                             }
-                                            .foregroundColor(.white)
+                                            .foregroundColor(DesignSystem.Colors.surface)
                                             .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
+                                            .padding(.vertical, 8)
                                             .background(
-                                                LinearGradient(
-                                                    colors: [
-                                                        Color(red: 0.2, green: 0.5, blue: 0.4),
-                                                        Color(red: 0.15, green: 0.45, blue: 0.5)
-                                                    ],
-                                                    startPoint: .leading,
-                                                    endPoint: .trailing
-                                                )
+                                                editingServerAddress.isEmpty ? DesignSystem.Colors.surfaceElevated : DesignSystem.Colors.accent
                                             )
-                                            .cornerRadius(10)
+                                            .cornerRadius(4)
                                         }
                                         .disabled(editingServerAddress.isEmpty || isTestingConnection)
-                                        .opacity(editingServerAddress.isEmpty ? 0.5 : 1.0)
                                     }
                                     
-                                    Divider()
-                                        .background(Color.white.opacity(0.2))
                                     
-                                    // Model Provider Picker (Local/Cloud)
-                                    HStack(spacing: 16) {
-                                        Image(systemName: provider == .local ? "server.rack" : "cloud")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
-                                            .frame(width: 24)
-                                        
-                                        Text("Model Provider")
-                                            .foregroundColor(.white)
-                                            .font(.body)
-                                        
-                                        Spacer()
-                                        
-                                        Picker("", selection: $provider) {
-                                            ForEach(ChatView.Provider.allCases, id: \.self) { providerOption in
-                                                Text(providerOption.displayName).tag(providerOption)
-                                            }
-                                        }
-                                        .pickerStyle(.segmented)
-                                        .frame(width: 140)
-                                    }
-                                    
-                                    // Provider description
-                                    Text(provider == .local ? "Uses local models (Ollama/vLLM)" : "Uses cloud models (Anthropic)")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                        .padding(.leading, 40)
+                                    Text("All chat requests are sent to your server. The app does not run models locally.")
+                                        .font(DesignSystem.Typography.caption())
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                                 }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
+                                .padding(16)
                             }
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(16)
+                            .mattePanel()
                             .padding(.horizontal, 20)
                         }
                         
-                        // App Section
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("App")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
+                        // Backend Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            DSSectionHeader(title: "Backend")
                                 .padding(.horizontal, 20)
-                                .padding(.bottom, 12)
                             
                             VStack(spacing: 0) {
-                                Button(action: { showingPersonalization = true }) {
-                                    SettingsRow(
-                                        icon: "person.circle",
-                                        title: "Personalization",
-                                        showChevron: true
-                                    )
-                                }
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                SettingsToggleRow(
-                                    icon: "keyboard",
-                                    title: "Show keyboard on launch",
-                                    isOn: $showKeyboardOnLaunch
-                                )
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                // Safety Level Picker
+                                // Provider routing (server-side)
                                 HStack(spacing: 16) {
-                                    Image(systemName: "shield.lefthalf.filled")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
+                                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                                         .frame(width: 24)
                                     
-                                    Text("Tool Safety Level")
-                                        .foregroundColor(.white)
-                                        .font(.body)
+                                    Text("Provider")
+                                        .font(DesignSystem.Typography.body())
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    
+                                    Spacer()
+                                    
+                                    Picker("", selection: $provider) {
+                                        ForEach(ChatView.Provider.allCases, id: \.self) { providerOption in
+                                            Text(providerOption.displayName).tag(providerOption)
+                                        }
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .frame(width: 200)
+                                }
+                                .padding(16)
+                                
+                                Divider().background(DesignSystem.Colors.separator).padding(.leading, 56)
+                                
+                                // Safety Level
+                                HStack(spacing: 16) {
+                                    Image(systemName: "shield.lefthalf.filled")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                        .frame(width: 24)
+                                    
+                                    Text("Safety Protocols")
+                                        .font(DesignSystem.Typography.body())
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                                     
                                     Spacer()
                                     
@@ -320,133 +265,132 @@ struct SettingsView: View {
                                     } label: {
                                         HStack(spacing: 6) {
                                             Text(safetyLevel.displayName)
-                                                .foregroundColor(.white.opacity(0.7))
-                                                .font(.body)
+                                                .font(DesignSystem.Typography.caption())
+                                                .foregroundStyle(DesignSystem.Colors.accent)
                                             Image(systemName: "chevron.up.chevron.down")
-                                                .font(.caption2)
-                                                .foregroundColor(.white.opacity(0.5))
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(DesignSystem.Colors.textTertiary)
                                         }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(DesignSystem.Colors.surfaceElevated)
+                                        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
+                                                .stroke(DesignSystem.Colors.border.opacity(0.75), lineWidth: DesignSystem.Layout.borderWidth)
+                                        )
                                     }
                                 }
+                                .padding(16)
+                            }
+                            .mattePanel()
+                            .padding(.horizontal, 20)
+                        }
+                        
+                        // Experience Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            DSSectionHeader(title: "Experience")
                                 .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
+                            
+                            VStack(spacing: 0) {
+                                // Appearance
+                                HStack(spacing: 16) {
+                                    Image(systemName: "circle.lefthalf.filled")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                        .frame(width: 24)
+                                    
+                                    Text("Appearance")
+                                        .font(DesignSystem.Typography.body())
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    
+                                    Spacer()
+                                    
+                                    Picker("", selection: $appAppearanceRaw) {
+                                        ForEach(AppAppearance.allCases) { option in
+                                            Text(option.title).tag(option.rawValue)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .pickerStyle(.segmented)
+                                    .frame(width: 220)
+                                }
+                                .padding(16)
                                 
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
+                                Divider().background(DesignSystem.Colors.separator).padding(.leading, 56)
                                 
+                                Button(action: { showingPersonalization = true }) {
+                                    SettingsRow(
+                                        icon: "slider.horizontal.3",
+                                        title: "Personalization",
+                                        showChevron: true
+                                    )
+                                }
+                                
+                                Divider().background(DesignSystem.Colors.separator).padding(.leading, 56)
+                                
+                                SettingsToggleRow(
+                                    icon: "keyboard",
+                                    title: "Auto-Keyboard",
+                                    isOn: $showKeyboardOnLaunch
+                                )
+                            }
+                            .mattePanel()
+                            .padding(.horizontal, 20)
+                        }
+                        
+                        // Data Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            DSSectionHeader(title: "Data")
+                                .padding(.horizontal, 20)
+                            
+                            VStack(spacing: 0) {
                                 Button(action: { showingDeleteAlert = true }) {
                                     HStack(spacing: 16) {
                                         Image(systemName: "trash")
-                                            .font(.title3)
-                                            .foregroundColor(.red)
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(DesignSystem.Colors.error)
                                             .frame(width: 24)
                                         
-                                        Text("Delete conversation history")
-                                            .foregroundColor(.red)
-                                            .font(.body)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Purge Chat History")
+                                                .font(DesignSystem.Typography.body())
+                                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                            Text("Deletes all conversations stored on this device.")
+                                                .font(DesignSystem.Typography.caption())
+                                                .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                        }
                                         
                                         Spacer()
                                     }
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 16)
+                                    .padding(16)
                                 }
+                                .buttonStyle(.plain)
                             }
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(16)
+                            .mattePanel()
                             .padding(.horizontal, 20)
                         }
-                        
-                        // About Section
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("About")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                                .padding(.horizontal, 20)
-                                .padding(.bottom, 12)
-                            
-                            VStack(spacing: 0) {
-                                SettingsRow(
-                                    icon: "doc.text",
-                                    title: "Term & Conditions",
-                                    showChevron: true
-                                )
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                SettingsRow(
-                                    icon: "lock",
-                                    title: "Privacy Policy",
-                                    showChevron: true
-                                )
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                SettingsRow(
-                                    icon: "doc.plaintext",
-                                    title: "Licenses",
-                                    showChevron: true
-                                )
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                HStack(spacing: 16) {
-                                    Image(systemName: "info.circle")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
-                                        .frame(width: 24)
-                                    
-                                    Text("Version 1.39.1")
-                                        .foregroundColor(.white)
-                                        .font(.body)
-                                    
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
-                            }
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(16)
-                            .padding(.horizontal, 20)
-                        }
-                        
-                        // More Section
-                        Text("More")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
                     }
                     .padding(.vertical, 20)
                 }
             }
         }
-        .alert("Delete Conversation History", isPresented: $showingDeleteAlert) {
+        .alert("Purge History", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
+            Button("Execute Purge", role: .destructive) {
                 conversationManager.deleteHistory()
             }
         } message: {
-            Text("Are you sure you want to delete all conversation history? This action cannot be undone.")
+            Text("All conversation data will be permanently deleted. This action cannot be undone.")
         }
         .onAppear {
-            // Initialize editing field with current value
             if editingServerAddress.isEmpty {
                 editingServerAddress = serverAddress
             }
         }
         .fullScreenCover(isPresented: $showingPersonalization) {
             PersonalizationView(
-                systemPrompt: $systemPrompt,
-                selectedTheme: $selectedTheme,
-                selectedFontStyle: $selectedFontStyle
+                systemPrompt: $systemPrompt
             )
         }
         .navigationBarHidden(true)
@@ -458,14 +402,11 @@ struct SettingsView: View {
         
         isTestingConnection = true
         connectionStatus = .connecting
-        
-        // Dismiss keyboard
         isServerFieldFocused = false
         
         Task {
             do {
                 let success = try await NetworkManager.shared.testConnection(to: editingServerAddress)
-                
                 await MainActor.run {
                     isTestingConnection = false
                     connectionStatus = success ? .connected : .failed
@@ -488,24 +429,23 @@ struct SettingsRow: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(.white)
+                .font(.system(size: 18))
+                .foregroundColor(DesignSystem.Colors.textSecondary)
                 .frame(width: 24)
             
             Text(title)
-                .foregroundColor(.white)
-                .font(.body)
+                .font(DesignSystem.Typography.body())
+                .foregroundColor(DesignSystem.Colors.textPrimary)
             
             Spacer()
             
             if showChevron {
                 Image(systemName: "chevron.right")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                .font(.system(size: 12))
+                    .foregroundColor(DesignSystem.Colors.textTertiary)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(16)
         .contentShape(Rectangle())
     }
 }
@@ -518,21 +458,20 @@ struct SettingsToggleRow: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(.white)
+                .font(.system(size: 18))
+                .foregroundColor(DesignSystem.Colors.textSecondary)
                 .frame(width: 24)
             
             Text(title)
-                .foregroundColor(.white)
-                .font(.body)
+                .font(DesignSystem.Typography.body())
+                .foregroundColor(DesignSystem.Colors.textPrimary)
             
             Spacer()
             
             Toggle("", isOn: $isOn)
                 .labelsHidden()
+                .tint(DesignSystem.Colors.accent)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(16)
     }
 }
-

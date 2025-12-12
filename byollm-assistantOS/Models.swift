@@ -222,7 +222,7 @@ class ConversationManager: ObservableObject {
         // Check if server is configured
         guard let serverAddress = serverAddress, !serverAddress.isEmpty else {
             let errorMessage = Message(
-                content: "⚠️ Please configure your server address in Settings → Server Connection to start chatting with your LLM.",
+                content: "Server not configured. Please set your server address in Settings to start chatting.\n\nAll chat requests are sent to your server; the app does not run models locally.",
                 isUser: false,
                 timestamp: Date()
             )
@@ -271,12 +271,14 @@ class ConversationManager: ObservableObject {
                 print("🔍 Should parse thinking tokens: \(shouldParseThinkingTokens())")
                 print("🆔 Conversation ID: \(currentConversation.id.uuidString)")
                 
+                let composedPrompt = self.composedSystemPrompt()
+                
                 // Send to server with streaming
                 try await NetworkManager.shared.sendChatMessageStreaming(
                     to: serverAddress,
                     model: selectedModel,
                     messages: Array(apiMessages),
-                    systemPrompt: systemPrompt,
+                    systemPrompt: composedPrompt,
                     provider: provider,
                     safetyLevel: safetyLevel,
                     temperature: 0.7,
@@ -533,6 +535,33 @@ class ConversationManager: ObservableObject {
         currentConversation = conversation
         
         saveConversationHistory()
+    }
+    
+    // MARK: - Prompt composition (profile appended)
+    
+    private func composedSystemPrompt() -> String? {
+        let base = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let profile = profilePrompt()
+        
+        var parts: [String] = []
+        if !base.isEmpty { parts.append(base) }
+        if let profile, !profile.isEmpty { parts.append(profile) }
+        
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+    }
+    
+    private func profilePrompt() -> String? {
+        let name = (UserDefaults.standard.string(forKey: "userProfile.name") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let occupation = (UserDefaults.standard.string(forKey: "userProfile.occupation") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let about = (UserDefaults.standard.string(forKey: "userProfile.about") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        var lines: [String] = []
+        if !name.isEmpty { lines.append("Name: \(name)") }
+        if !occupation.isEmpty { lines.append("Occupation: \(occupation)") }
+        if !about.isEmpty { lines.append("About: \(about)") }
+        
+        guard !lines.isEmpty else { return nil }
+        return "User Profile\n" + lines.joined(separator: "\n")
     }
 }
 
