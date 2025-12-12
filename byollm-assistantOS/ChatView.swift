@@ -100,23 +100,13 @@ struct ChatView: View {
                             
                             Spacer()
                             
-                            HStack(spacing: 4) {
-                                Button(action: { presentedSheet = .controls }) {
-                                    Image(systemName: "slider.horizontal.3")
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                        .frame(width: 44, height: 44)
-                                }
-                                .buttonStyle(.plain)
-                                
-                                Button(action: { conversationManager.newConversation() }) {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                        .frame(width: 44, height: 44)
-                                }
-                                .buttonStyle(.plain)
+                            Button(action: { conversationManager.newConversation() }) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    .frame(width: 44, height: 44)
                             }
+                            .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 10)
@@ -132,8 +122,7 @@ struct ChatView: View {
                         // Messages Area
                         if conversationManager.currentConversation.messages.isEmpty {
                             WelcomeView(
-                                isServerConfigured: !(serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
-                                onOpenSettings: { presentedSheet = .settings }
+                                isServerConfigured: !(serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             )
                         } else {
                             MessagesListView(
@@ -229,27 +218,19 @@ struct ChatView: View {
             }
             .sheet(item: $presentedSheet) { sheet in
                 switch sheet {
-                case .controls:
-                    ChatControlsSheetView(
-                        serverAddress: serverAddress,
-                        selectedModel: $selectedModel,
-                        availableModels: currentAvailableModels,
-                        provider: $provider,
-                        safetyLevel: $safetyLevel,
-                        reasoningEffort: $reasoningEffort,
-                        supportsReasoningEffort: supportsReasoningEffort(for: selectedModel),
-                        onOpenSettings: { presentedSheet = .settings }
-                    )
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
                 case .settings:
                     SettingsView(
                         conversationManager: conversationManager,
                         showKeyboardOnLaunch: $showKeyboardOnLaunch,
                         serverAddress: $serverAddress,
                         systemPrompt: $systemPrompt,
+                        selectedModel: $selectedModel,
                         safetyLevel: $safetyLevel,
+                        reasoningEffort: $reasoningEffort,
                         provider: $provider,
+                        availableModels: currentAvailableModels,
+                        supportsReasoningEffort: supportsReasoningEffort(for:),
+                        onRefreshModels: { loadModelsFromServer() },
                         isInSidePanel: false,
                         onBack: nil,
                         onDismiss: { presentedSheet = nil }
@@ -274,10 +255,6 @@ struct ChatView: View {
                 width: min(340, geometry.size.width * 0.84),
                 onSelectConversation: { conversation in
                     conversationManager.loadConversation(conversation)
-                    closeSidebar()
-                },
-                onNewConversation: {
-                    conversationManager.newConversation()
                     closeSidebar()
                 },
                 onOpenSettings: {
@@ -437,7 +414,6 @@ struct ChatView: View {
 
 struct WelcomeView: View {
     let isServerConfigured: Bool
-    let onOpenSettings: () -> Void
     
     var body: some View {
         VStack(spacing: 18) {
@@ -457,14 +433,7 @@ struct WelcomeView: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
-            
-            if !isServerConfigured {
-                Button("Open Settings", systemImage: "link") {
-                    onOpenSettings()
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
-                .padding(.top, 6)
-            }
+            // Settings is accessible from the sidebar; keep the home state calm.
             
             Spacer()
         }
@@ -474,218 +443,9 @@ struct WelcomeView: View {
 // MARK: - Sheet routing
 
 enum PresentedSheet: String, Identifiable {
-    case controls
     case settings
     
     var id: String { rawValue }
-}
-
-// MARK: - Chat Controls
-
-struct ChatControlsSheetView: View {
-    let serverAddress: String
-    @Binding var selectedModel: String
-    let availableModels: [String]
-    @Binding var provider: ChatView.Provider
-    @Binding var safetyLevel: ChatView.SafetyLevel
-    @Binding var reasoningEffort: ChatView.ReasoningEffort
-    let supportsReasoningEffort: Bool
-    let onOpenSettings: () -> Void
-    
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                NatureTechBackground().ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        DSSectionHeader(title: "Connection")
-                            .padding(.horizontal, 20)
-                        
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Server")
-                                        .font(DesignSystem.Typography.caption())
-                                        .foregroundStyle(DesignSystem.Colors.textTertiary)
-                                    
-                                    Text(serverAddress.isEmpty ? "Not configured" : serverAddress)
-                                        .font(DesignSystem.Typography.body())
-                                        .foregroundStyle(serverAddress.isEmpty ? DesignSystem.Colors.textTertiary : DesignSystem.Colors.textPrimary)
-                                        .lineLimit(1)
-                                }
-                                
-                                Spacer()
-                                
-                                Button("Settings", systemImage: "gearshape") {
-                                    dismiss()
-                                    onOpenSettings()
-                                }
-                                .buttonStyle(SecondaryActionButtonStyle())
-                            }
-                            
-                            Text("All chat requests are sent to your server. This app does not run models locally.")
-                                .font(DesignSystem.Typography.caption())
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(16)
-                        .mattePanel()
-                        .padding(.horizontal, 20)
-                        
-                        DSSectionHeader(title: "Chat")
-                            .padding(.horizontal, 20)
-                        
-                        VStack(spacing: 0) {
-                            controlsRow(title: "Provider", value: provider.displayName)
-                                .overlay(alignment: .trailing) {
-                                    Picker("", selection: $provider) {
-                                        ForEach(ChatView.Provider.allCases, id: \.self) { option in
-                                            Text(option.displayName).tag(option)
-                                        }
-                                    }
-                                    .labelsHidden()
-                                    .pickerStyle(.segmented)
-                                    .frame(width: 190)
-                                }
-                            
-                            Divider().background(DesignSystem.Colors.separator).padding(.leading, 16)
-                            
-                            controlsRow(title: "Safety", value: safetyLevel.displayName)
-                                .overlay(alignment: .trailing) {
-                                    Menu {
-                                        ForEach(ChatView.SafetyLevel.allCases, id: \.self) { level in
-                                            Button {
-                                                safetyLevel = level
-                                            } label: {
-                                                if safetyLevel == level {
-                                                    Label(level.displayName, systemImage: "checkmark")
-                                                } else {
-                                                    Text(level.displayName)
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        Text(safetyLevel.displayName)
-                                            .font(DesignSystem.Typography.caption())
-                                            .foregroundStyle(DesignSystem.Colors.accent)
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 6)
-                                            .background(DesignSystem.Colors.surfaceElevated)
-                                            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
-                                                    .stroke(DesignSystem.Colors.border.opacity(0.75), lineWidth: DesignSystem.Layout.borderWidth)
-                                            )
-                                    }
-                                }
-                            
-                            if supportsReasoningEffort {
-                                Divider().background(DesignSystem.Colors.separator).padding(.leading, 16)
-                                
-                                controlsRow(title: "Reasoning", value: reasoningEffort.displayName)
-                                    .overlay(alignment: .trailing) {
-                                        Menu {
-                                            ForEach(ChatView.ReasoningEffort.allCases, id: \.self) { effort in
-                                                Button {
-                                                    reasoningEffort = effort
-                                                } label: {
-                                                    if reasoningEffort == effort {
-                                                        Label(effort.displayName, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(effort.displayName)
-                                                    }
-                                                }
-                                            }
-                                        } label: {
-                                            Text(reasoningEffort.displayName)
-                                                .font(DesignSystem.Typography.caption())
-                                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .background(DesignSystem.Colors.surfaceElevated)
-                                                .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
-                                                        .stroke(DesignSystem.Colors.border.opacity(0.75), lineWidth: DesignSystem.Layout.borderWidth)
-                                                )
-                                        }
-                                    }
-                            }
-                            
-                            Divider().background(DesignSystem.Colors.separator).padding(.leading, 16)
-                            
-                            controlsRow(title: "Model", value: selectedModel)
-                                .overlay(alignment: .trailing) {
-                                    Menu {
-                                        ForEach(availableModels, id: \.self) { model in
-                                            Button {
-                                                selectedModel = model
-                                            } label: {
-                                                if selectedModel == model {
-                                                    Label(model, systemImage: "checkmark")
-                                                } else {
-                                                    Text(model)
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Text(selectedModel.replacingOccurrences(of: ":latest", with: ""))
-                                                .font(DesignSystem.Typography.caption())
-                                                .foregroundStyle(DesignSystem.Colors.accent)
-                                                .lineLimit(1)
-                                            Image(systemName: "chevron.down")
-                                                .font(.system(size: 10, weight: .semibold))
-                                                .foregroundStyle(DesignSystem.Colors.textTertiary)
-                                        }
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(DesignSystem.Colors.surfaceElevated)
-                                        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
-                                                .stroke(DesignSystem.Colors.border.opacity(0.75), lineWidth: DesignSystem.Layout.borderWidth)
-                                        )
-                                    }
-                                }
-                        }
-                        .mattePanel()
-                        .padding(.horizontal, 20)
-                        
-                    }
-                    .padding(.vertical, 20)
-                }
-            }
-            .navigationTitle("Controls")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                }
-            }
-        }
-    }
-    
-    private func controlsRow(title: String, value: String) -> some View {
-        HStack {
-            Text(title)
-                .font(DesignSystem.Typography.body())
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Spacer(minLength: 12)
-            Text(value)
-                .font(DesignSystem.Typography.caption())
-                .foregroundStyle(DesignSystem.Colors.textTertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .opacity(0.0001) // keeps layout stable; real value shown in trailing control
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-    }
 }
 
 // MARK: - Sidebar
@@ -696,7 +456,6 @@ private struct ChatSidebarView: View {
     @Binding var dragX: CGFloat
     let width: CGFloat
     let onSelectConversation: (Conversation) -> Void
-    let onNewConversation: () -> Void
     let onOpenSettings: () -> Void
     
     private var offsetX: CGFloat {
@@ -747,64 +506,55 @@ private struct ChatSidebarView: View {
             )
             
             ScrollView {
-                VStack(spacing: 10) {
-                    Button(action: onNewConversation) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(DesignSystem.Colors.accent)
-                            Text("New chat")
-                                .font(DesignSystem.Typography.body().weight(.semibold))
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Spacer()
-                        }
-                        .padding(14)
-                    }
-                    .buttonStyle(.plain)
-                    .mattePanel()
-                    
-                    Button(action: onOpenSettings) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            Text("Settings")
-                                .font(DesignSystem.Typography.body())
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Spacer()
-                        }
-                        .padding(14)
-                    }
-                    .buttonStyle(.plain)
-                    .mattePanel()
-                    
+                VStack(alignment: .leading, spacing: 10) {
                     DSSectionHeader(title: "Recent")
-                        .padding(.top, 12)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
                     
-                    VStack(spacing: 8) {
+                    LazyVStack(spacing: 8) {
                         ForEach(conversationsForDisplay) { conversation in
                             Button {
                                 onSelectConversation(conversation)
                             } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(title(for: conversation))
-                                        .font(DesignSystem.Typography.body())
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                        .lineLimit(1)
-                                    
-                                    Text(conversation.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                        .font(DesignSystem.Typography.caption())
-                                        .foregroundStyle(DesignSystem.Colors.textTertiary)
-                                }
-                                .padding(14)
+                                SidebarConversationRow(
+                                    title: title(for: conversation),
+                                    subtitle: conversation.createdAt.formatted(date: .abbreviated, time: .shortened)
+                                )
                             }
                             .buttonStyle(.plain)
-                            .mattePanel()
                         }
                     }
                 }
-                .padding(16)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+            }
+            
+            // Bottom pinned Settings
+            VStack(spacing: 0) {
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundStyle(DesignSystem.Colors.separator)
+                
+                Button(action: onOpenSettings) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .frame(width: 20)
+                        Text("Settings")
+                            .font(DesignSystem.Typography.body().weight(.semibold))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .background(DesignSystem.Colors.chrome.opacity(0.98))
             }
         }
         .frame(width: width)
@@ -839,6 +589,38 @@ private struct ChatSidebarView: View {
         let first = conversation.messages.first?.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if first.isEmpty { return "New chat" }
         return String(first.prefix(60))
+    }
+}
+
+private struct SidebarConversationRow: View {
+    let title: String
+    let subtitle: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(DesignSystem.Typography.body())
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                
+                Text(subtitle)
+                    .font(DesignSystem.Typography.caption())
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    .lineLimit(1)
+            }
+            
+            Spacer(minLength: 10)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignSystem.Colors.surface2.opacity(0.98))
+        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous)
+                .stroke(DesignSystem.Colors.separator.opacity(0.9), lineWidth: DesignSystem.Layout.borderWidth)
+        )
     }
 }
 

@@ -13,8 +13,13 @@ struct SettingsView: View {
     @Binding var showKeyboardOnLaunch: Bool
     @Binding var serverAddress: String
     @Binding var systemPrompt: String
+    @Binding var selectedModel: String
     @Binding var safetyLevel: ChatView.SafetyLevel
+    @Binding var reasoningEffort: ChatView.ReasoningEffort
     @Binding var provider: ChatView.Provider
+    let availableModels: [String]
+    let supportsReasoningEffort: (String) -> Bool
+    let onRefreshModels: () -> Void
     @AppStorage("appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
     @State private var showingDeleteAlert = false
     @State private var showingPersonalization = false
@@ -287,6 +292,142 @@ struct SettingsView: View {
                             .padding(.horizontal, 20)
                         }
                         
+                        // Chat Controls Section (seamless "Controls")
+                        VStack(alignment: .leading, spacing: 12) {
+                            DSSectionHeader(title: "Chat")
+                                .padding(.horizontal, 20)
+                            
+                            VStack(spacing: 0) {
+                                // Model
+                                HStack(spacing: 16) {
+                                    Image(systemName: "cpu")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                        .frame(width: 24)
+                                    
+                                    Text("Model")
+                                        .font(DesignSystem.Typography.body())
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    
+                                    Spacer()
+                                    
+                                    Menu {
+                                        if availableModels.isEmpty {
+                                            Text("No models").disabled(true)
+                                        } else {
+                                            ForEach(availableModels, id: \.self) { model in
+                                                Button {
+                                                    selectedModel = model
+                                                } label: {
+                                                    if selectedModel == model {
+                                                        Label(model, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(model)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Text(selectedModel.replacingOccurrences(of: ":latest", with: ""))
+                                                .font(DesignSystem.Typography.caption())
+                                                .foregroundStyle(DesignSystem.Colors.accent)
+                                                .lineLimit(1)
+                                            Image(systemName: "chevron.up.chevron.down")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(DesignSystem.Colors.surfaceElevated)
+                                        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
+                                                .stroke(DesignSystem.Colors.border.opacity(0.75), lineWidth: DesignSystem.Layout.borderWidth)
+                                        )
+                                    }
+                                }
+                                .padding(16)
+                                
+                                Divider().background(DesignSystem.Colors.separator).padding(.leading, 56)
+                                
+                                // Reload models
+                                Button(action: onRefreshModels) {
+                                    HStack(spacing: 16) {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                            .frame(width: 24)
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Refresh models")
+                                                .font(DesignSystem.Typography.body())
+                                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                            Text("Pulls latest list from your server.")
+                                                .font(DesignSystem.Typography.caption())
+                                                .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                        }
+                                        
+                                        Spacer()
+                                    }
+                                    .padding(16)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                if supportsReasoningEffort(selectedModel) {
+                                    Divider().background(DesignSystem.Colors.separator).padding(.leading, 56)
+                                    
+                                    // Reasoning effort
+                                    HStack(spacing: 16) {
+                                        Image(systemName: "brain")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                            .frame(width: 24)
+                                        
+                                        Text("Reasoning")
+                                            .font(DesignSystem.Typography.body())
+                                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        
+                                        Spacer()
+                                        
+                                        Menu {
+                                            ForEach(ChatView.ReasoningEffort.allCases, id: \.self) { effort in
+                                                Button {
+                                                    reasoningEffort = effort
+                                                } label: {
+                                                    if reasoningEffort == effort {
+                                                        Label(effort.displayName, systemImage: "checkmark")
+                                                    } else {
+                                                        Text(effort.displayName)
+                                                    }
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Text(reasoningEffort.displayName)
+                                                    .font(DesignSystem.Typography.caption())
+                                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                                Image(systemName: "chevron.up.chevron.down")
+                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                            }
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(DesignSystem.Colors.surfaceElevated)
+                                            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
+                                                    .stroke(DesignSystem.Colors.border.opacity(0.75), lineWidth: DesignSystem.Layout.borderWidth)
+                                            )
+                                        }
+                                    }
+                                    .padding(16)
+                                }
+                            }
+                            .mattePanel()
+                            .padding(.horizontal, 20)
+                        }
+                        
                         // Experience Section
                         VStack(alignment: .leading, spacing: 12) {
                             DSSectionHeader(title: "Experience")
@@ -334,6 +475,27 @@ struct SettingsView: View {
                                     title: "Auto-Keyboard",
                                     isOn: $showKeyboardOnLaunch
                                 )
+                            }
+                            .mattePanel()
+                            .padding(.horizontal, 20)
+                        }
+                        
+                        // Memory Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            DSSectionHeader(title: "Memory")
+                                .padding(.horizontal, 20)
+                            
+                            VStack(spacing: 0) {
+                                NavigationLink {
+                                    MemoryImportView()
+                                } label: {
+                                    SettingsRow(
+                                        icon: "tray.and.arrow.down",
+                                        title: "Import Data",
+                                        showChevron: true
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
                             .mattePanel()
                             .padding(.horizontal, 20)

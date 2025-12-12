@@ -31,9 +31,9 @@ struct ContentView: View {
                     Label("Tasks", systemImage: "checklist")
                 }
             
-            SearchView()
+            AriseView()
                 .tabItem {
-                    Label("Search", systemImage: "magnifyingglass")
+                    Label("Arise", systemImage: "sparkles")
                 }
         }
         .toolbarBackground(DesignSystem.Colors.chrome.opacity(0.98), for: .tabBar)
