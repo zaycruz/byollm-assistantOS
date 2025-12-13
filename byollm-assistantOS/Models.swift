@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftData
 
 struct Message: Identifiable, Equatable, Codable {
     let id: UUID
@@ -562,6 +563,388 @@ class ConversationManager: ObservableObject {
         
         guard !lines.isEmpty else { return nil }
         return "User Profile\n" + lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - Level Up (SwiftData models)
+
+enum LevelUpGoalStatus: String, Codable, CaseIterable {
+    case active
+    case completed
+    case archived
+}
+
+enum LevelUpObjectiveStatus: String, Codable, CaseIterable {
+    case locked
+    case available
+    case inProgress
+    case completed
+    case skipped
+}
+
+extension LevelUpGoalStatus {
+    static func fromAPI(_ raw: String) -> LevelUpGoalStatus {
+        switch raw.lowercased() {
+        case "active": return .active
+        case "completed": return .completed
+        case "archived": return .archived
+        default: return .active
+        }
+    }
+}
+
+extension LevelUpObjectiveStatus {
+    static func fromAPI(_ raw: String) -> LevelUpObjectiveStatus {
+        let normalized = raw.lowercased()
+        switch normalized {
+        case "locked": return .locked
+        case "available", "unlocked": return .available
+        case "in_progress", "inprogress", "running", "started": return .inProgress
+        case "completed", "done": return .completed
+        case "skipped": return .skipped
+        default: return .locked
+        }
+    }
+}
+
+@Model
+final class LevelUpGoal {
+    @Attribute(.unique) var id: UUID
+    var title: String
+    var goalDescription: String?
+    var createdAt: Date
+    var targetDate: Date?
+    var status: LevelUpGoalStatus
+    
+    // Server tracking
+    var serverID: String?
+    var lastSyncedAt: Date?
+    
+    // Client-side pinning (max 3 pinned goals)
+    var isPinned: Bool = false
+    var pinnedAt: Date?
+    
+    // Relationships - use simple relationships without inverse to avoid circular reference
+    @Relationship(deleteRule: .cascade) var objectives: [LevelUpObjective] = []
+    @Relationship(deleteRule: .cascade) var contexts: [LevelUpContext] = []
+    
+    init(
+        id: UUID = UUID(),
+        title: String,
+        goalDescription: String? = nil,
+        createdAt: Date = Date(),
+        targetDate: Date? = nil,
+        status: LevelUpGoalStatus = .active,
+        serverID: String? = nil,
+        lastSyncedAt: Date? = nil,
+        isPinned: Bool = false,
+        pinnedAt: Date? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.goalDescription = goalDescription
+        self.createdAt = createdAt
+        self.targetDate = targetDate
+        self.status = status
+        self.serverID = serverID
+        self.lastSyncedAt = lastSyncedAt
+        self.isPinned = isPinned
+        self.pinnedAt = pinnedAt
+    }
+    
+    var totalObjectives: Int { objectives.count }
+    
+    var completedObjectives: Int {
+        objectives.filter { $0.status == .completed }.count
+    }
+    
+    var progressPercentage: Double {
+        guard totalObjectives > 0 else { return 0 }
+        return Double(completedObjectives) / Double(totalObjectives)
+    }
+}
+
+// MARK: - Goal Pinning Helpers
+
+enum LevelUpGoalPinning {
+    static let maxPinnedGoals = 3
+    
+    /// Pins a goal and enforces the max-3 limit by unpinning the oldest if needed.
+    /// Returns the goal that was unpinned (if any) so the caller can show feedback.
+    @discardableResult
+    static func pin(_ goal: LevelUpGoal, allGoals: [LevelUpGoal]) -> LevelUpGoal? {
+        guard !goal.isPinned else { return nil }
+        
+        let currentlyPinned = allGoals.filter { $0.isPinned }.sorted {
+            ($0.pinnedAt ?? .distantPast) < ($1.pinnedAt ?? .distantPast)
+        }
+        
+        var unpinnedGoal: LevelUpGoal?
+        
+        // If already at max, unpin the oldest
+        if currentlyPinned.count >= maxPinnedGoals, let oldest = currentlyPinned.first {
+            oldest.isPinned = false
+            oldest.pinnedAt = nil
+            unpinnedGoal = oldest
+        }
+        
+        goal.isPinned = true
+        goal.pinnedAt = Date()
+        
+        return unpinnedGoal
+    }
+    
+    /// Unpins a goal.
+    static func unpin(_ goal: LevelUpGoal) {
+        goal.isPinned = false
+        goal.pinnedAt = nil
+    }
+    
+    /// Returns pinned goals sorted by pinnedAt (most recent first for display).
+    static func pinnedGoals(from goals: [LevelUpGoal]) -> [LevelUpGoal] {
+        goals.filter { $0.isPinned }.sorted {
+            ($0.pinnedAt ?? .distantPast) > ($1.pinnedAt ?? .distantPast)
+        }
+    }
+    
+    /// Auto-pins the most recently created goal if no goals are pinned.
+    /// Returns true if a goal was auto-pinned.
+    @discardableResult
+    static func autoPinIfNeeded(activeGoals: [LevelUpGoal]) -> Bool {
+        let pinned = activeGoals.filter { $0.isPinned }
+        guard pinned.isEmpty, let mostRecent = activeGoals.max(by: { $0.createdAt < $1.createdAt }) else {
+            return false
+        }
+        mostRecent.isPinned = true
+        mostRecent.pinnedAt = Date()
+        return true
+    }
+}
+
+@Model
+final class LevelUpObjective {
+    @Attribute(.unique) var id: UUID
+    var serverID: String?
+    
+    // Core properties
+    var title: String
+    var objectiveDescription: String
+    var estimatedHours: Double
+    var pointsValue: Int
+    var tier: String // "Foundation", "Core", "Advanced"
+    var position: Int
+    
+    // State
+    var status: LevelUpObjectiveStatus
+    var availableAt: Date?
+    var completedAt: Date?
+    var completionNotes: String?
+    
+    // Metadata
+    var purpose: String
+    var unlocks: String
+    var createdAt: Date
+    
+    // Relationships - simplified to avoid circular references
+    var goal: LevelUpGoal?
+    @Relationship var dependencies: [LevelUpObjective] = []
+    @Relationship var dependents: [LevelUpObjective] = []
+    @Relationship var contextSources: [LevelUpContext] = []
+    
+    init(
+        id: UUID = UUID(),
+        serverID: String? = nil,
+        title: String,
+        objectiveDescription: String,
+        estimatedHours: Double,
+        pointsValue: Int,
+        tier: String,
+        position: Int,
+        status: LevelUpObjectiveStatus = .locked,
+        availableAt: Date? = nil,
+        completedAt: Date? = nil,
+        completionNotes: String? = nil,
+        purpose: String = "",
+        unlocks: String = "",
+        createdAt: Date = Date(),
+        goal: LevelUpGoal? = nil
+    ) {
+        self.id = id
+        self.serverID = serverID
+        self.title = title
+        self.objectiveDescription = objectiveDescription
+        self.estimatedHours = estimatedHours
+        self.pointsValue = pointsValue
+        self.tier = tier
+        self.position = position
+        self.status = status
+        self.availableAt = availableAt
+        self.completedAt = completedAt
+        self.completionNotes = completionNotes
+        self.purpose = purpose
+        self.unlocks = unlocks
+        self.createdAt = createdAt
+        self.goal = goal
+    }
+    
+    var isAvailable: Bool {
+        status == .available || status == .inProgress
+    }
+    
+    var isLocked: Bool { status == .locked }
+    
+    var formattedEstimate: String {
+        let hours = Int(estimatedHours)
+        let minutes = Int((estimatedHours - Double(hours)) * 60)
+        if hours > 0 {
+            return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+}
+
+@Model
+final class LevelUpContext {
+    @Attribute(.unique) var id: UUID
+    var serverID: String?
+    
+    var content: String
+    var source: String?
+    var createdAt: Date
+    
+    // Relationships - simplified
+    var goal: LevelUpGoal?
+    @Relationship var influencedObjectives: [LevelUpObjective] = []
+    
+    init(
+        id: UUID = UUID(),
+        serverID: String? = nil,
+        content: String,
+        source: String? = nil,
+        createdAt: Date = Date(),
+        goal: LevelUpGoal? = nil
+    ) {
+        self.id = id
+        self.serverID = serverID
+        self.content = content
+        self.source = source
+        self.createdAt = createdAt
+        self.goal = goal
+    }
+    
+    var characterCount: Int { content.count }
+}
+
+@Model
+final class LevelUpUserProgress {
+    @Attribute(.unique) var id: UUID
+    
+    // Progression
+    var currentLevel: Int
+    var totalPoints: Int
+    var pointsToNextLevel: Int
+    
+    // Streaks
+    var currentStreak: Int
+    var longestStreak: Int
+    var lastActivityDate: Date?
+    var freezeDaysAvailable: Int
+    
+    // Settings
+    var dailyReminderEnabled: Bool
+    var dailyReminderTime: Date
+    var notificationsEnabled: Bool
+    
+    init(
+        id: UUID = UUID(),
+        currentLevel: Int = 1,
+        totalPoints: Int = 0,
+        pointsToNextLevel: Int = 100,
+        currentStreak: Int = 0,
+        longestStreak: Int = 0,
+        lastActivityDate: Date? = nil,
+        freezeDaysAvailable: Int = 0,
+        dailyReminderEnabled: Bool = false,
+        dailyReminderTime: Date = Date(),
+        notificationsEnabled: Bool = false
+    ) {
+        self.id = id
+        self.currentLevel = currentLevel
+        self.totalPoints = totalPoints
+        self.pointsToNextLevel = pointsToNextLevel
+        self.currentStreak = currentStreak
+        self.longestStreak = longestStreak
+        self.lastActivityDate = lastActivityDate
+        self.freezeDaysAvailable = freezeDaysAvailable
+        self.dailyReminderEnabled = dailyReminderEnabled
+        self.dailyReminderTime = dailyReminderTime
+        self.notificationsEnabled = notificationsEnabled
+    }
+    
+    var levelProgress: Double {
+        let currentStart = LevelUpProgression.pointsForLevel(currentLevel)
+        let nextStart = LevelUpProgression.pointsForLevel(currentLevel + 1)
+        let range = Double(nextStart - currentStart)
+        let earned = Double(totalPoints - currentStart)
+        return min(max(earned / range, 0), 1)
+    }
+}
+
+struct LevelUpPathUpdate: Codable {
+    var timestamp: Date
+    var addedObjectiveIDs: [UUID]
+    var modifiedObjectiveIDs: [UUID]
+    var removedObjectiveIDs: [UUID]
+    var reason: String
+}
+
+// MARK: - Deterministic progression helpers (testable)
+
+enum LevelUpProgression {
+    static func pointsForLevel(_ level: Int) -> Int {
+        max(1, level) * max(1, level) * 100
+    }
+    
+    static func level(forTotalPoints points: Int) -> Int {
+        max(1, Int(sqrt(Double(max(points, 0)) / 100.0)))
+    }
+    
+    static func pointsToNextLevel(level: Int, totalPoints: Int) -> Int {
+        let nextStart = pointsForLevel(level + 1)
+        return max(0, nextStart - totalPoints)
+    }
+    
+    static func updateStreak(
+        currentStreak: Int,
+        longestStreak: Int,
+        lastActivityDate: Date?,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> (current: Int, longest: Int, lastActivityDate: Date) {
+        let today = calendar.startOfDay(for: now)
+        let last = lastActivityDate.map { calendar.startOfDay(for: $0) }
+        
+        var updatedStreak = currentStreak
+        var updatedLongest = longestStreak
+        
+        if let last {
+            let daysSince = calendar.dateComponents([.day], from: last, to: today).day ?? 0
+            if daysSince == 0 {
+                // no change
+            } else if daysSince == 1 {
+                updatedStreak = max(1, updatedStreak + 1)
+                updatedLongest = max(updatedLongest, updatedStreak)
+            } else {
+                updatedStreak = 1
+                updatedLongest = max(updatedLongest, updatedStreak)
+            }
+        } else {
+            updatedStreak = 1
+            updatedLongest = max(updatedLongest, updatedStreak)
+        }
+        
+        return (updatedStreak, updatedLongest, now)
     }
 }
 

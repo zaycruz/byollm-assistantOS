@@ -348,3 +348,160 @@ struct DSChip: View {
             )
     }
 }
+
+// MARK: - Level Up Design System (separate from console UI)
+//
+// We intentionally keep Level Up tokens isolated so existing AssistantOS screens
+// don’t regress visually during the migration.
+
+struct LevelUpDesignSystem {
+    struct Colors {
+        // Foundations
+        static let backgroundPrimary = dynamicHex(light: "F5F5F7", dark: "1A1A1A")
+        static let backgroundSecondary = dynamicHex(light: "FFFFFF", dark: "242424")
+        static let backgroundTertiary = dynamicHex(light: "EDEDED", dark: "2D2D2D")
+        
+        static let textPrimary = dynamicHex(light: "121212", dark: "E8E8E8")
+        static let textSecondary = dynamicHex(light: "4A4A4A", dark: "A0A0A0")
+        static let textTertiary = dynamicHex(light: "7A7A7A", dark: "666666")
+        
+        // Semantic state colors
+        static let objectiveAvailable = Color(hex: "4A9EFF")
+        static let objectiveCompleted = Color(hex: "FFB84D")
+        static let objectiveLocked = Color(hex: "4A4A4A")
+        static let objectiveInProgress = Color(hex: "7B68EE")
+        static let criticalPath = Color(hex: "FF6B6B")
+        
+        // Structural
+        static let separator = dynamicHex(light: "D6D6DA", dark: "3A3A3A")
+        static let borderSubtle = dynamicHex(light: "D0D0D6", dark: "3A3A3A")
+        
+        static func progressGradient(progress: Double = 1.0) -> AngularGradient {
+            AngularGradient(
+                colors: [objectiveAvailable, objectiveCompleted],
+                center: .center,
+                startAngle: .degrees(270),
+                endAngle: .degrees(270 + 360 * min(max(progress, 0), 1))
+            )
+        }
+    }
+    
+    struct Typography {
+        // Use Dynamic Type-backed styles wherever possible.
+        static func display() -> Font { .system(.largeTitle, design: .default).weight(.semibold) }
+        static func title1() -> Font { .system(.title, design: .default).weight(.semibold) }
+        static func title2() -> Font { .system(.title2, design: .default).weight(.semibold) }
+        static func body() -> Font { .system(.body, design: .default) }
+        static func subheadline() -> Font { .system(.subheadline, design: .default) }
+        static func caption() -> Font { .system(.caption, design: .default) }
+        static func smallCaps() -> Font { .system(.caption2, design: .default).weight(.medium) }
+    }
+    
+    struct Layout {
+        // 8pt baseline grid
+        static let xxs: CGFloat = 4
+        static let xs: CGFloat = 8
+        static let s: CGFloat = 12
+        static let m: CGFloat = 16
+        static let l: CGFloat = 24
+        static let xl: CGFloat = 32
+        static let xxl: CGFloat = 48
+        
+        static let screenMargin: CGFloat = 16
+        static let cardRadius: CGFloat = 12
+        static let inputRadius: CGFloat = 8
+        
+        static let minTapSize: CGFloat = 48
+        static let buttonHeight: CGFloat = 52
+    }
+    
+    struct Motion {
+        static let microDuration: TimeInterval = 0.3
+        static let ringDuration: TimeInterval = 0.6
+    }
+}
+
+extension LevelUpDesignSystem.Colors {
+    fileprivate static func dynamicHex(light: String, dark: String) -> Color {
+        Color(uiColor: UIColor { traits in
+            let isDark = traits.userInterfaceStyle == .dark
+            return UIColor(hex: isDark ? dark : light) ?? .magenta
+        })
+    }
+}
+
+// MARK: - Level Up Buttons
+
+struct LevelUpPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(LevelUpDesignSystem.Typography.body().weight(.semibold))
+            .foregroundStyle(Color.black)
+            .frame(minHeight: LevelUpDesignSystem.Layout.buttonHeight)
+            .padding(.horizontal, LevelUpDesignSystem.Layout.m)
+            .background(
+                RoundedRectangle(cornerRadius: LevelUpDesignSystem.Layout.cardRadius, style: .continuous)
+                    .fill(LevelUpDesignSystem.Colors.objectiveAvailable.opacity(configuration.isPressed ? 0.8 : 1.0))
+            )
+            .contentShape(Rectangle())
+    }
+}
+
+struct LevelUpSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(LevelUpDesignSystem.Typography.body().weight(.semibold))
+            .foregroundStyle(LevelUpDesignSystem.Colors.objectiveAvailable)
+            .frame(minHeight: LevelUpDesignSystem.Layout.buttonHeight)
+            .padding(.horizontal, LevelUpDesignSystem.Layout.m)
+            .background(
+                RoundedRectangle(cornerRadius: LevelUpDesignSystem.Layout.cardRadius, style: .continuous)
+                    .fill(configuration.isPressed ? LevelUpDesignSystem.Colors.objectiveAvailable.opacity(0.12) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: LevelUpDesignSystem.Layout.cardRadius, style: .continuous)
+                    .stroke(LevelUpDesignSystem.Colors.objectiveAvailable.opacity(configuration.isPressed ? 0.9 : 1.0), lineWidth: 2)
+            )
+            .contentShape(Rectangle())
+    }
+}
+
+struct LevelUpDestructiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(LevelUpDesignSystem.Typography.body().weight(.semibold))
+            .foregroundStyle(LevelUpDesignSystem.Colors.criticalPath)
+            .frame(minHeight: LevelUpDesignSystem.Layout.buttonHeight)
+            .padding(.horizontal, LevelUpDesignSystem.Layout.m)
+            .background(
+                RoundedRectangle(cornerRadius: LevelUpDesignSystem.Layout.cardRadius, style: .continuous)
+                    .fill(configuration.isPressed ? LevelUpDesignSystem.Colors.criticalPath.opacity(0.12) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: LevelUpDesignSystem.Layout.cardRadius, style: .continuous)
+                    .stroke(LevelUpDesignSystem.Colors.criticalPath.opacity(configuration.isPressed ? 0.9 : 1.0), lineWidth: 2)
+            )
+            .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Level Up Inputs
+
+struct LevelUpTextFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<_Label>) -> some View {
+        configuration
+            .font(LevelUpDesignSystem.Typography.body())
+            .foregroundStyle(LevelUpDesignSystem.Colors.textPrimary)
+            .padding(.horizontal, LevelUpDesignSystem.Layout.s)
+            .padding(.vertical, LevelUpDesignSystem.Layout.s)
+            .frame(minHeight: LevelUpDesignSystem.Layout.minTapSize)
+            .background(
+                RoundedRectangle(cornerRadius: LevelUpDesignSystem.Layout.inputRadius, style: .continuous)
+                    .fill(LevelUpDesignSystem.Colors.backgroundTertiary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: LevelUpDesignSystem.Layout.inputRadius, style: .continuous)
+                    .stroke(LevelUpDesignSystem.Colors.borderSubtle, lineWidth: 1)
+            )
+    }
+}
