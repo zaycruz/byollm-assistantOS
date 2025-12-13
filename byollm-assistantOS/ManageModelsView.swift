@@ -12,24 +12,23 @@ struct ManageModelsView: View {
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            NatureTechBackground().ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Header
                 HStack {
                     Button(action: { dismiss() }) {
                         Image(systemName: "chevron.left")
-                            .font(.title3)
-                            .foregroundColor(.white)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
                             .frame(width: 44, height: 44)
                     }
                     
                     Spacer()
                     
-                    Text("Manage models")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                    Text("Models")
+                        .font(DesignSystem.Typography.header())
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                     
                     Spacer()
                     
@@ -38,17 +37,22 @@ struct ManageModelsView: View {
                         .frame(width: 44, height: 44)
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 60)
-                .padding(.bottom, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+                .background(.ultraThinMaterial)
+                .overlay(
+                    Rectangle()
+                        .frame(height: 0.5)
+                        .foregroundStyle(DesignSystem.Colors.separator),
+                    alignment: .bottom
+                )
                 
                 ScrollView {
                     VStack(spacing: 24) {
                         // Ollama Section
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
-                                Text("Ollama")
-                                    .font(.headline)
-                                    .foregroundColor(.gray)
+                                DSSectionHeader(title: "Ollama")
                                 
                                 Spacer()
                                 
@@ -56,8 +60,8 @@ struct ManageModelsView: View {
                                     // Add model action
                                 }) {
                                     Image(systemName: "plus.circle.fill")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(DesignSystem.Colors.accent)
                                 }
                             }
                             .padding(.horizontal, 20)
@@ -95,9 +99,7 @@ struct ManageModelsView: View {
                         
                         // Hugging Face Section
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Hugging Face")
-                                .font(.headline)
-                                .foregroundColor(.gray)
+                            DSSectionHeader(title: "Hugging Face")
                                 .padding(.horizontal, 20)
                             
                             VStack(spacing: 12) {
@@ -152,49 +154,52 @@ struct ModelCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
                     Text(icon)
-                        .font(.title)
+                        .font(.system(size: 22))
                         .frame(width: 44, height: 44)
-                        .background(backgroundColor)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .background(backgroundColor.opacity(0.28))
+                        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous)
+                                .stroke(DesignSystem.Colors.border.opacity(0.7), lineWidth: DesignSystem.Layout.borderWidth)
+                        )
                     
                     Text(name)
-                        .font(.headline)
-                        .foregroundColor(.white)
+                        .font(DesignSystem.Typography.body().weight(.semibold))
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                     
                     Spacer()
                     
                     Image(systemName: "chevron.right")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textTertiary)
                 }
                 
                 Text(description)
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .font(DesignSystem.Typography.caption())
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineSpacing(2)
                     .multilineTextAlignment(.leading)
                 
                 HStack(spacing: 8) {
                     Text(modelsCount)
-                        .font(.caption)
-                        .foregroundColor(.gray)
+                        .font(DesignSystem.Typography.caption())
+                        .foregroundStyle(DesignSystem.Colors.textTertiary)
                     
                     ForEach(badges, id: \.self) { badge in
-                        Text(badge)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(Color.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.orange.opacity(0.2))
-                            .cornerRadius(6)
+                        DSChip(text: badge, isActive: true)
                     }
                 }
             }
             .padding(16)
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(16)
+            .background(DesignSystem.Colors.surfaceElevated.opacity(0.88))
+            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.65), lineWidth: DesignSystem.Layout.borderWidth)
+            )
+            .shadow(color: Color.black.opacity(0.25), radius: 14, x: 0, y: 10)
         }
+        .buttonStyle(.plain)
     }
 }
 

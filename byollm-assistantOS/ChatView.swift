@@ -10,20 +10,38 @@ import SwiftUI
 struct ChatView: View {
     @StateObject private var conversationManager = ConversationManager()
     @State private var inputText = ""
-    @State private var showSidePanel = false
-    @State private var showSettings = false
-    @State private var sidePanelView: SidePanelContentView = .navigation
+    @State private var presentedSheet: PresentedSheet?
     @State private var showKeyboardOnLaunch = true
     @State private var serverAddress = ""
     @State private var systemPrompt = ""
-    @State private var selectedTheme: AppTheme = .ocean
-    @State private var selectedFontStyle: FontStyle = .system
     @State private var selectedModel = "gpt-oss:latest"
     @State private var availableModels: [String] = ["gpt-oss:latest"]
+    @State private var cloudModels: [String] = ["claude-sonnet-4-5"]
     @State private var safetyLevel: SafetyLevel = .medium
     @State private var reasoningEffort: ReasoningEffort = .medium
+    @State private var provider: Provider = .local
+    
+    // Computed property for current available models based on provider
+    private var currentAvailableModels: [String] {
+        provider == .cloud ? cloudModels : availableModels
+    }
     @State private var keyboardHeight: CGFloat = 0
+    @State private var inputTextHeight: CGFloat = 36
     @FocusState private var isInputFocused: Bool
+    @State private var isSidebarOpen: Bool = false
+    @State private var sidebarDragX: CGFloat = 0
+    
+    enum Provider: String, CaseIterable {
+        case local = "local"
+        case cloud = "cloud"
+        
+        var displayName: String {
+            switch self {
+            case .local: return "Server (Local)"
+            case .cloud: return "Server (Cloud)"
+            }
+        }
+    }
     
     enum SafetyLevel: String, CaseIterable {
         case low = "low"
@@ -45,341 +63,211 @@ struct ChatView: View {
         }
     }
     
-    enum AppTheme {
-        case ocean, sunset, forest, midnight, lavender, crimson, coral, arctic
-        
-        var colors: [Color] {
-            switch self {
-            case .ocean:
-                return [Color(red: 0.2, green: 0.4, blue: 0.35), Color(red: 0.15, green: 0.45, blue: 0.5)]
-            case .sunset:
-                return [Color(red: 0.95, green: 0.4, blue: 0.3), Color(red: 0.95, green: 0.65, blue: 0.3)]
-            case .forest:
-                return [Color(red: 0.15, green: 0.35, blue: 0.2), Color(red: 0.25, green: 0.45, blue: 0.25)]
-            case .midnight:
-                return [Color(red: 0.1, green: 0.1, blue: 0.2), Color(red: 0.15, green: 0.15, blue: 0.3)]
-            case .lavender:
-                return [Color(red: 0.4, green: 0.3, blue: 0.5), Color(red: 0.5, green: 0.4, blue: 0.6)]
-            case .crimson:
-                return [Color(red: 0.5, green: 0.15, blue: 0.2), Color(red: 0.6, green: 0.2, blue: 0.3)]
-            case .coral:
-                return [Color(red: 0.95, green: 0.5, blue: 0.45), Color(red: 0.95, green: 0.7, blue: 0.5)]
-            case .arctic:
-                return [Color(red: 0.7, green: 0.85, blue: 0.9), Color(red: 0.8, green: 0.9, blue: 0.95)]
-            }
-        }
-    }
-    
-    enum FontStyle {
-        case system, rounded, serif, monospaced
-        
-        func apply(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-            switch self {
-            case .system:
-                return .system(size: size, weight: weight)
-            case .rounded:
-                return .system(size: size, weight: weight, design: .rounded)
-            case .serif:
-                return .system(size: size, weight: weight, design: .serif)
-            case .monospaced:
-                return .system(size: size, weight: weight, design: .monospaced)
-            }
-        }
-    }
-    
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Main Content
                 ZStack {
-                    // Gradient Background (Dynamic Theme)
-                    LinearGradient(
-                        colors: selectedTheme.colors,
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        // Dismiss keyboard when tapping outside
-                        isInputFocused = false
-                    }
+                    // Background
+                    NatureTechBackground()
+                        .ignoresSafeArea()
+                        .onTapGesture { isInputFocused = false }
                     
                     VStack(spacing: 0) {
                         // Top Bar
-                        ZStack {
-                            HStack {
-                                // Combined Settings/History Button - Left
-                                HStack(spacing: 16) {
-                                    Button(action: { 
-                                        sidePanelView = .settings
-                                        showSidePanel = true
-                                    }) {
-                                        Image(systemName: "gearshape")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
-                                    }
-                                    
-                                    Button(action: { 
-                                        sidePanelView = .chatHistory
-                                        showSidePanel = true
-                                    }) {
-                                        Image(systemName: "message")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
-                                    }
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(Color.white.opacity(0.15))
-                                .cornerRadius(25)
+                        HStack {
+                            Button(action: { openSidebar() }) {
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                            
+                            Spacer()
+                            
+                            VStack(spacing: 2) {
+                                Text("Chat")
+                                    .font(DesignSystem.Typography.body().weight(.semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
                                 
-                                Spacer()
-                                
-                                // Apps Button - Right
-                                Button(action: { 
-                                    // TODO: Handle apps page
-                                }) {
-                                    Image(systemName: "square.grid.2x2")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
-                                }
-                                
-                                // New Chat Icon Button - Right
-                                Button(action: { conversationManager.newConversation() }) {
-                                    Image(systemName: "square.and.pencil")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
-                                }
+                                Text(formatModelName(selectedModel))
+                                    .font(DesignSystem.Typography.caption())
+                                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                    .lineLimit(1)
                             }
                             
-                            // Model Selector - Centered (no background)
-                            Menu {
-                                ForEach(availableModels, id: \.self) { model in
-                                    Button(action: {
-                                        selectedModel = model
-                                    }) {
-                                        HStack {
-                                            Text(formatModelName(model))
-                                            if selectedModel == model {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Show reasoning effort submenu for GPT-oss models
-                                // Check the selectedModel directly instead of conversationManager
-                                if supportsReasoningEffort(for: selectedModel) {
-                                    Divider()
-                                    
-                                    Menu {
-                                        ForEach(ReasoningEffort.allCases, id: \.self) { effort in
-                                            Button(action: {
-                                                reasoningEffort = effort
-                                            }) {
-                                                HStack {
-                                                    Text(effort.displayName)
-                                                    if reasoningEffort == effort {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        HStack {
-                                            Image(systemName: "brain")
-                                            Text("Reasoning: \(reasoningEffort.displayName)")
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Text(formatModelName(selectedModel))
-                                        .font(.body)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
+                            Spacer()
+                            
+                            Button(action: { conversationManager.newConversation() }) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    .frame(width: 44, height: 44)
                             }
+                            .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 20)
+                        .padding(.top, 10)
+                        .padding(.bottom, 12)
+                        .background(DesignSystem.Colors.chrome.opacity(0.98))
+                        .overlay(
+                            Rectangle()
+                                .frame(height: 0.5)
+                                .foregroundStyle(DesignSystem.Colors.separator),
+                            alignment: .bottom
+                        )
                         
-                        // Messages or Welcome Screen
+                        // Messages Area
                         if conversationManager.currentConversation.messages.isEmpty {
-                            WelcomeView(fontStyle: selectedFontStyle)
+                            WelcomeView(
+                                isServerConfigured: !(serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            )
                         } else {
-                            MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isLoading: conversationManager.isLoading, isInputFocused: $isInputFocused)
+                            MessagesListView(
+                                messages: conversationManager.currentConversation.messages,
+                                isLoading: conversationManager.isLoading,
+                                isInputFocused: $isInputFocused
+                            )
                         }
                         
                         // Input Area
-                        VStack(spacing: 12) {
-                            // Input Field
-                            HStack(spacing: 12) {
-                                Button(action: {}) {
-                                    Image(systemName: "plus")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
-                                }
-                                
-                                HStack {
-                                    TextField("Ask anything", text: $inputText)
-                                        .foregroundColor(.white)
-                                        .focused($isInputFocused)
-                                        .submitLabel(.send)
-                                        .onSubmit {
-                                            sendMessage()
-                                        }
-                                        .disabled(conversationManager.isLoading)
-                                    
-                                    if conversationManager.isLoading {
-                                        // Stop button when loading
-                                        Button(action: { 
-                                            conversationManager.stopGenerating()
-                                        }) {
-                                            Image(systemName: "stop.circle.fill")
-                                                .font(.title2)
-                                                .foregroundColor(.red)
-                                        }
-                                    } else if !inputText.isEmpty {
-                                        Button(action: { sendMessage() }) {
-                                            Image(systemName: "arrow.up.circle.fill")
-                                                .font(.title2)
-                                                .foregroundColor(.white)
-                                        }
+                        VStack(spacing: 0) {
+                            // Divider
+                            Rectangle()
+                                .frame(height: 0.5)
+                                .foregroundStyle(DesignSystem.Colors.separator)
+                            
+                            HStack(alignment: .bottom, spacing: 12) {
+                                // Input Field
+                                ZStack(alignment: .topLeading) {
+                                    if inputText.isEmpty {
+                                        Text(serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Connect your server to chat…" : "Message your assistant…")
+                                            .font(DesignSystem.Typography.body())
+                                            .foregroundColor(DesignSystem.Colors.textTertiary)
+                                            .padding(.horizontal, 4)
+                                            .padding(.top, 8)
                                     }
+                                    
+                                    TextEditor(text: $inputText)
+                                        .font(DesignSystem.Typography.body())
+                                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                                        .focused($isInputFocused)
+                                        .scrollContentBackground(.hidden)
+                                        .background(Color.clear)
+                                        .frame(height: inputTextHeight)
+                                        .padding(.horizontal, -4)
+                                        .padding(.vertical, -8)
+                                        .onChange(of: inputText) { oldValue, newValue in
+                                            if newValue.count > 10000 {
+                                                inputText = String(newValue.prefix(10000))
+                                            }
+                                            
+                                            if newValue.isEmpty {
+                                                inputTextHeight = 36
+                                            } else {
+                                                let explicitLines = newValue.components(separatedBy: .newlines).count
+                                                let estimatedWrappedLines = max(1, Int(ceil(Double(newValue.replacingOccurrences(of: "\n", with: "").count) / 30.0)))
+                                                let totalLines = max(explicitLines, estimatedWrappedLines)
+                                                let estimatedHeight = CGFloat(totalLines) * 22.0 + 12.0
+                                                inputTextHeight = min(max(36, estimatedHeight), 120)
+                                            }
+                                        }
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(Color.white.opacity(0.15))
-                                .cornerRadius(25)
+                                .frame(height: inputTextHeight)
+                                .padding(12)
+                                .background(DesignSystem.Colors.surfaceElevated)
+                                .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous)
+                                        .stroke(isInputFocused ? DesignSystem.Colors.accent : DesignSystem.Colors.border.opacity(0.8), lineWidth: DesignSystem.Layout.borderWidth)
+                                )
                                 
-                                Button(action: {}) {
-                                    Image(systemName: "waveform")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
+                                // Send / Stop Button
+                                if conversationManager.isLoading {
+                                    Button(action: { conversationManager.stopGenerating() }) {
+                                        Image(systemName: "stop.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundStyle(DesignSystem.Colors.error)
+                                            .frame(width: 44, height: 44)
+                                            .background(DesignSystem.Colors.surfaceElevated)
+                                            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
+                                    }
+                                    .padding(.bottom, 0)
+                                } else {
+                                    Button(action: { sendMessage() }) {
+                                        Image(systemName: "arrow.up")
+                                            .font(.system(size: 16))
+                                            .foregroundStyle(inputText.isEmpty ? DesignSystem.Colors.textTertiary : DesignSystem.Colors.surface)
+                                            .frame(width: 44, height: 44)
+                                            .background(inputText.isEmpty ? DesignSystem.Colors.surfaceElevated : DesignSystem.Colors.accent)
+                                            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
+                                    }
+                                    .disabled(inputText.isEmpty || serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                    .padding(.bottom, 0)
                                 }
                             }
                             .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(DesignSystem.Colors.chrome.opacity(0.98))
                         }
-                        .padding(.bottom, keyboardHeight > 0 ? 8 : 40)
+                        .padding(.bottom, keyboardHeight > 0 ? 0 : 0)
                     }
                 }
             }
-            .sheet(isPresented: $showSidePanel) {
-                if sidePanelView == .settings {
+            .sheet(item: $presentedSheet) { sheet in
+                switch sheet {
+                case .settings:
                     SettingsView(
                         conversationManager: conversationManager,
                         showKeyboardOnLaunch: $showKeyboardOnLaunch,
                         serverAddress: $serverAddress,
                         systemPrompt: $systemPrompt,
-                        selectedTheme: $selectedTheme,
-                        selectedFontStyle: $selectedFontStyle,
+                        selectedModel: $selectedModel,
                         safetyLevel: $safetyLevel,
+                        reasoningEffort: $reasoningEffort,
+                        provider: $provider,
+                        availableModels: currentAvailableModels,
+                        supportsReasoningEffort: supportsReasoningEffort(for:),
+                        onRefreshModels: { loadModelsFromServer() },
                         isInSidePanel: false,
-                        onBack: {
-                            showSidePanel = false
-                        },
-                        onDismiss: {
-                            showSidePanel = false
-                        }
-                    )
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                } else if sidePanelView == .chatHistory {
-                    ChatHistorySheetView(
-                        conversationManager: conversationManager,
-                        isPresented: $showSidePanel
+                        onBack: nil,
+                        onDismiss: { presentedSheet = nil }
                     )
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                 }
             }
+            
+            // Sidebar overlay (ChatGPT-style)
+            if isSidebarOpen {
+                Color.black.opacity(0.20)
+                    .ignoresSafeArea()
+                    .onTapGesture { closeSidebar() }
+                    .transition(.opacity)
+            }
+            
+            ChatSidebarView(
+                conversationManager: conversationManager,
+                isOpen: $isSidebarOpen,
+                dragX: $sidebarDragX,
+                width: min(340, geometry.size.width * 0.84),
+                onSelectConversation: { conversation in
+                    conversationManager.loadConversation(conversation)
+                    closeSidebar()
+                },
+                onOpenSettings: {
+                    closeSidebar()
+                    presentedSheet = .settings
+                }
+            )
         }
         .onAppear {
-            // Start with a fresh conversation on app launch
-            conversationManager.newConversation()
-            
-            // Load saved server address
-            if let savedAddress = UserDefaults.standard.string(forKey: "serverAddress") {
-                serverAddress = savedAddress
-                conversationManager.serverAddress = savedAddress
-            }
-            
-            // Load saved selected model
-            if let savedModel = UserDefaults.standard.string(forKey: "selectedModel") {
-                selectedModel = savedModel
-                conversationManager.selectedModel = savedModel
-            } else {
-                // Sync the default selected model to conversation manager
-                conversationManager.selectedModel = selectedModel
-            }
-            
-            // Load saved safety level
-            if let savedLevel = UserDefaults.standard.string(forKey: "safetyLevel"),
-               let level = SafetyLevel(rawValue: savedLevel) {
-                safetyLevel = level
-                conversationManager.safetyLevel = level.rawValue
-            }
-            
-            // Load saved reasoning effort
-            if let savedEffort = UserDefaults.standard.string(forKey: "reasoningEffort"),
-               let effort = ReasoningEffort(rawValue: savedEffort) {
-                reasoningEffort = effort
-                conversationManager.reasoningEffort = effort.rawValue
-            }
-            
-            if showKeyboardOnLaunch {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    isInputFocused = true
-                }
-            }
-            
-            // Load models AFTER server address is set
-            loadModelsFromServer()
-            
-            // Setup keyboard notifications
-            NotificationCenter.default.addObserver(
-                forName: UIResponder.keyboardWillShowNotification,
-                object: nil,
-                queue: .main
-            ) { notification in
-                guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                withAnimation(.easeOut(duration: 0.3)) {
-                    keyboardHeight = keyboardFrame.height
-                }
-            }
-            
-            NotificationCenter.default.addObserver(
-                forName: UIResponder.keyboardWillHideNotification,
-                object: nil,
-                queue: .main
-            ) { _ in
-                withAnimation(.easeOut(duration: 0.3)) {
-                    keyboardHeight = 0
-                }
-            }
+            setupOnAppear()
         }
         .onChange(of: serverAddress) { oldValue, newValue in
             conversationManager.serverAddress = newValue
-            // Save to UserDefaults
             UserDefaults.standard.set(newValue, forKey: "serverAddress")
             loadModelsFromServer()
         }
@@ -398,106 +286,366 @@ struct ChatView: View {
             conversationManager.reasoningEffort = newValue.rawValue
             UserDefaults.standard.set(newValue.rawValue, forKey: "reasoningEffort")
         }
+        .onChange(of: provider) { oldValue, newValue in
+            conversationManager.provider = newValue.rawValue
+            UserDefaults.standard.set(newValue.rawValue, forKey: "provider")
+            updateModelForProvider(newValue)
+        }
+    }
+    
+    private func setupOnAppear() {
+        conversationManager.newConversation()
+        
+        if let savedAddress = UserDefaults.standard.string(forKey: "serverAddress") {
+            serverAddress = savedAddress
+            conversationManager.serverAddress = savedAddress
+        }
+        
+        if let savedModel = UserDefaults.standard.string(forKey: "selectedModel") {
+            selectedModel = savedModel
+            conversationManager.selectedModel = savedModel
+        }
+        
+        if let savedLevel = UserDefaults.standard.string(forKey: "safetyLevel"),
+           let level = SafetyLevel(rawValue: savedLevel) {
+            safetyLevel = level
+            conversationManager.safetyLevel = level.rawValue
+        }
+        
+        if let savedEffort = UserDefaults.standard.string(forKey: "reasoningEffort"),
+           let effort = ReasoningEffort(rawValue: savedEffort) {
+            reasoningEffort = effort
+            conversationManager.reasoningEffort = effort.rawValue
+        }
+        
+        if let savedProvider = UserDefaults.standard.string(forKey: "provider"),
+           let providerValue = Provider(rawValue: savedProvider) {
+            provider = providerValue
+            conversationManager.provider = providerValue.rawValue
+        }
+        
+        updateModelForProvider(provider)
+        
+        if showKeyboardOnLaunch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                isInputFocused = true
+            }
+        }
+        
+        loadModelsFromServer()
+        
+        NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { notification in
+            guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            withAnimation(.easeOut(duration: 0.3)) {
+                keyboardHeight = keyboardFrame.height
+            }
+        }
+        
+        NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
+            withAnimation(.easeOut(duration: 0.3)) {
+                keyboardHeight = 0
+            }
+        }
+    }
+    
+    private func updateModelForProvider(_ provider: Provider) {
+        if provider == .cloud {
+            if !cloudModels.contains(selectedModel) {
+                selectedModel = cloudModels.first ?? "claude-sonnet-4-5"
+                conversationManager.selectedModel = selectedModel
+            }
+        } else {
+            if !availableModels.contains(selectedModel) {
+                selectedModel = availableModels.first ?? "gpt-oss:latest"
+                conversationManager.selectedModel = selectedModel
+            }
+        }
     }
     
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         conversationManager.sendMessage(inputText)
         inputText = ""
+        inputTextHeight = 36
     }
     
     private func formatModelName(_ modelName: String) -> String {
-        // Remove ":latest" suffix and simplify model name
-        let name = modelName.replacingOccurrences(of: ":latest", with: "")
-        return name
+        return modelName.replacingOccurrences(of: ":latest", with: "")
     }
     
     private func supportsReasoningEffort(for model: String) -> Bool {
         let modelLower = model.lowercased()
-        return modelLower.contains("gpt-oss") || 
-               modelLower.contains("gpt-o") || 
-               modelLower.contains("gpt-4o") || 
-               modelLower.contains("o1") || 
-               modelLower.contains("o3")
+        return modelLower.contains("gpt-oss") || modelLower.contains("gpt-o") || modelLower.contains("gpt-4o") || modelLower.contains("o1") || modelLower.contains("o3")
     }
     
     private func loadModelsFromServer() {
         guard !serverAddress.isEmpty else { return }
-        
         Task {
             do {
                 let models = try await NetworkManager.shared.getModels(from: serverAddress)
-                
                 await MainActor.run {
                     if !models.isEmpty {
                         self.availableModels = models
-                        // If the current selected model is not in the list, select the first one
                         if !models.contains(selectedModel) {
                             self.selectedModel = models.first ?? "gpt-oss:latest"
                         }
                     }
                 }
             } catch {
-                // Silently fail - keep default models
-                print("Failed to load models from server: \(error.localizedDescription)")
+                print("Failed to load models: \(error.localizedDescription)")
             }
+        }
+    }
+    
+    private func openSidebar() {
+        withAnimation(.easeOut(duration: 0.22)) {
+            isSidebarOpen = true
+            sidebarDragX = 0
+        }
+    }
+    
+    private func closeSidebar() {
+        withAnimation(.easeOut(duration: 0.22)) {
+            isSidebarOpen = false
+            sidebarDragX = 0
         }
     }
 }
 
 struct WelcomeView: View {
-    let fontStyle: ChatView.FontStyle
+    let isServerConfigured: Bool
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 18) {
             Spacer()
             
-            VStack(spacing: 16) {
-                Text("Meet AssistantOS")
-                    .font(fontStyle.apply(size: 34, weight: .bold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                
-                Text("BYOLLM - Bring Your Own LLM. Host your own large language models and interact with them seamlessly from your mobile device. Take control of your AI assistant with complete privacy and flexibility.")
-                    .font(fontStyle.apply(size: 17, weight: .regular))
-                    .foregroundColor(.white.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .padding(.horizontal, 32)
-            }
-            .padding(.horizontal, 20)
+            Image(systemName: "sparkles")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(DesignSystem.Colors.accent)
+                .padding(.bottom, 6)
+            
+            Text("Ready")
+                .font(DesignSystem.Typography.header())
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            
+            Text(isServerConfigured ? "Start a conversation." : "Connect to your server to start chatting.")
+                .font(DesignSystem.Typography.body())
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            // Settings is accessible from the sidebar; keep the home state calm.
             
             Spacer()
         }
     }
 }
 
+// MARK: - Sheet routing
+
+enum PresentedSheet: String, Identifiable {
+    case settings
+    
+    var id: String { rawValue }
+}
+
+// MARK: - Sidebar
+
+private struct ChatSidebarView: View {
+    @ObservedObject var conversationManager: ConversationManager
+    @Binding var isOpen: Bool
+    @Binding var dragX: CGFloat
+    let width: CGFloat
+    let onSelectConversation: (Conversation) -> Void
+    let onOpenSettings: () -> Void
+    
+    private var offsetX: CGFloat {
+        let closedX = -width
+        if isOpen {
+            return min(0, dragX)
+        } else {
+            return closedX
+        }
+    }
+    
+    private var conversationsForDisplay: [Conversation] {
+        // Show the current conversation at the top if it has content.
+        var list: [Conversation] = []
+        if !conversationManager.currentConversation.messages.isEmpty {
+            list.append(conversationManager.currentConversation)
+        }
+        list.append(contentsOf: conversationManager.conversationHistory)
+        return list
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Chats")
+                    .font(DesignSystem.Typography.title())
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                
+                Spacer()
+                
+                Button(action: { isOpen = false }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
+            .background(DesignSystem.Colors.chrome.opacity(0.98))
+            .overlay(
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundStyle(DesignSystem.Colors.separator),
+                alignment: .bottom
+            )
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    DSSectionHeader(title: "Recent")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
+                    
+                    LazyVStack(spacing: 8) {
+                        ForEach(conversationsForDisplay) { conversation in
+                            Button {
+                                onSelectConversation(conversation)
+                            } label: {
+                                SidebarConversationRow(
+                                    title: title(for: conversation),
+                                    subtitle: conversation.createdAt.formatted(date: .abbreviated, time: .shortened)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+            }
+            
+            // Bottom pinned Settings
+            VStack(spacing: 0) {
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundStyle(DesignSystem.Colors.separator)
+                
+                Button(action: onOpenSettings) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .frame(width: 20)
+                        Text("Settings")
+                            .font(DesignSystem.Typography.body().weight(.semibold))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .background(DesignSystem.Colors.chrome.opacity(0.98))
+            }
+        }
+        .frame(width: width)
+        .background(DesignSystem.Colors.surface1)
+        .overlay(
+            Rectangle()
+                .frame(width: 0.5)
+                .foregroundStyle(DesignSystem.Colors.separator),
+            alignment: .trailing
+        )
+        .offset(x: offsetX)
+        .gesture(
+            DragGesture(minimumDistance: 10)
+                .onChanged { value in
+                    guard isOpen else { return }
+                    dragX = min(0, value.translation.width)
+                }
+                .onEnded { value in
+                    guard isOpen else { return }
+                    let shouldClose = value.translation.width < -width * 0.25
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        isOpen = !shouldClose
+                        dragX = 0
+                    }
+                }
+        )
+        .animation(.easeOut(duration: 0.22), value: isOpen)
+        .allowsHitTesting(isOpen || dragX != 0)
+    }
+    
+    private func title(for conversation: Conversation) -> String {
+        let first = conversation.messages.first?.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if first.isEmpty { return "New chat" }
+        return String(first.prefix(60))
+    }
+}
+
+private struct SidebarConversationRow: View {
+    let title: String
+    let subtitle: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(DesignSystem.Typography.body())
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                
+                Text(subtitle)
+                    .font(DesignSystem.Typography.caption())
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    .lineLimit(1)
+            }
+            
+            Spacer(minLength: 10)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignSystem.Colors.surface2.opacity(0.98))
+        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous)
+                .stroke(DesignSystem.Colors.separator.opacity(0.9), lineWidth: DesignSystem.Layout.borderWidth)
+        )
+    }
+}
+
 struct MessagesListView: View {
     let messages: [Message]
-    let fontStyle: ChatView.FontStyle
     let isLoading: Bool
     @FocusState.Binding var isInputFocused: Bool
     
     var body: some View {
         ScrollView {
             ScrollViewReader { proxy in
-                VStack(spacing: 20) {
+                LazyVStack(spacing: 16) {
                     ForEach(messages) { message in
-                        MessageBubble(message: message, fontStyle: fontStyle)
+                        MessageBubble(message: message)
                             .id(message.id)
                     }
                     
-                    // Show "Thinking..." text when loading and last message is empty
                     if isLoading && (messages.last?.content.isEmpty ?? true) {
-                        ThinkingIndicator(fontStyle: fontStyle)
+                        ThinkingIndicator()
                             .id("thinking-indicator")
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 20)
-                .contentShape(Rectangle())
                 .onTapGesture {
-                    // Dismiss keyboard when tapping on messages
                     isInputFocused = false
                 }
                 .onChange(of: messages.count) { oldValue, newValue in
@@ -521,1359 +669,129 @@ struct MessagesListView: View {
 
 struct MessageBubble: View {
     let message: Message
-    let fontStyle: ChatView.FontStyle
     @State private var isThinkingExpanded = false
     
     var body: some View {
-        if message.isUser {
-            // User message: compact bubble on the right
-            HStack {
+        HStack(alignment: .top, spacing: 12) {
+            if message.isUser {
                 Spacer()
-                
-                VStack(alignment: .trailing, spacing: 0) {
+                VStack(alignment: .trailing, spacing: 4) {
                     Text(message.content)
-                        .font(fontStyle.apply(size: 17, weight: .regular))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.trailing)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(20)
-                .frame(maxWidth: 280, alignment: .trailing)
-            }
-        } else {
-            // AI message: full width, no bubble
-            VStack(alignment: .leading, spacing: 12) {
-                // Debug: Print thinking content availability
-                let _ = {
-                    if let thinking = message.thinkingContent {
-                        print("💭 Thinking content found: \(thinking.prefix(100))...")
-                    } else {
-                        print("❌ No thinking content for message")
-                    }
-                }()
-                
-                // Thinking section (collapsible)
-                if let thinkingContent = message.thinkingContent, !thinkingContent.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        // Thinking header button
-                        Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                isThinkingExpanded.toggle()
-                            }
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "brain")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.purple.opacity(0.9))
-                                
-                                Text("Thinking Process")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.9))
-                                
-                                Spacer()
-                                
-                                Image(systemName: isThinkingExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.purple.opacity(0.8))
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color.purple.opacity(0.15), Color.blue.opacity(0.1)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.purple.opacity(0.3), lineWidth: 1)
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        
-                        // Expanded thinking content
-                        if isThinkingExpanded {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "lightbulb.fill")
-                                        .font(.caption2)
-                                        .foregroundColor(.yellow.opacity(0.8))
-                                    Text("Model's internal reasoning")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.6))
-                                        .italic()
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.top, 8)
-                                
-                                ScrollView {
-                                    Text(thinkingContent)
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .foregroundColor(.white.opacity(0.85))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .frame(maxHeight: 300)
-                            }
-                            .background(Color.black.opacity(0.3))
-                            .cornerRadius(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.purple.opacity(0.2), lineWidth: 1)
-                            )
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
-                                removal: .opacity
-                            ))
-                        }
-                    }
-                }
-                
-                // Main message content
-                ForEach(Array(parseMessageContent(message.content).enumerated()), id: \.offset) { index, block in
-                    switch block {
-                    case .text(let attributedContent):
-                        Text(attributedContent)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    
-                    case .code(let code, let language):
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let lang = language, !lang.isEmpty {
-                                Text(lang)
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.7))
-                                    .padding(.horizontal, 12)
-                                    .padding(.top, 8)
-                            }
-                            
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                Text(code)
-                                    .font(.system(size: 14, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                            }
-                        }
-                        .background(Color.black.opacity(0.3))
-                        .cornerRadius(8)
-                    
-                    case .toolResult(let result):
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "wrench.and.screwdriver.fill")
-                                    .font(.caption)
-                                Text("Tool Result")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .foregroundColor(.white.opacity(0.7))
-                            
-                            Text(result)
-                                .font(.system(size: 15, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.9))
-                                .padding(8)
-                        }
-                        .padding(10)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                        
-                    case .table(let tableData):
-                        MarkdownTableView(data: tableData)
-                            .padding(.vertical, 8)
-                    }
-                }
-            }
-            .padding(.horizontal, 0)
-            .padding(.vertical, 8)
-        }
-    }
-    
-    enum ContentBlock {
-        case text(AttributedString)
-        case code(String, language: String?)
-        case toolResult(String)
-        case table(TableData)
-    }
-    
-    private func parseMessageContent(_ content: String) -> [ContentBlock] {
-        var blocks: [ContentBlock] = []
-        var currentText = ""
-        
-        let lines = content.components(separatedBy: .newlines)
-        var i = 0
-        
-        while i < lines.count {
-            let line = lines[i]
-            
-            // Check for code block start
-            if line.hasPrefix("```") {
-                // Save any accumulated text
-                if !currentText.isEmpty {
-                    blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
-                    currentText = ""
-                }
-                
-                // Extract language if specified
-                let language = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                var codeLines: [String] = []
-                i += 1
-                
-                // Collect code lines until closing ```
-                while i < lines.count && !lines[i].hasPrefix("```") {
-                    codeLines.append(lines[i])
-                    i += 1
-                }
-                
-                let code = codeLines.joined(separator: "\n")
-                blocks.append(.code(code, language: language.isEmpty ? nil : language))
-                i += 1
-                continue
-            }
-            
-            // Check for Table
-            // A table block typically starts with a header row containing pipes, followed by a separator row
-            if line.contains("|") {
-                let potentialHeader = line
-                if i + 1 < lines.count {
-                    let potentialSeparator = lines[i+1]
-                    let separatorTrimmed = potentialSeparator.trimmingCharacters(in: .whitespaces)
-                    
-                    // Check if separator line looks like |---|---| or ---|---
-                    // Must contain | and - and NOT contain alphanumeric characters (except maybe alignment colons :)
-                    let isSeparator = separatorTrimmed.contains("|") && 
-                                     separatorTrimmed.contains("-") && 
-                                     !separatorTrimmed.contains(where: { $0.isLetter })
-                    
-                    if isSeparator {
-                        // Found a table start!
-                        if !currentText.isEmpty {
-                            blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
-                            currentText = ""
-                        }
-                        
-                        var tableLines: [String] = [potentialHeader, potentialSeparator]
-                        i += 2
-                        
-                        // Collect subsequent rows
-                        while i < lines.count {
-                            let rowLine = lines[i]
-                            if !rowLine.trimmingCharacters(in: .whitespaces).isEmpty && rowLine.contains("|") {
-                                tableLines.append(rowLine)
-                                i += 1
-                            } else {
-                                break
-                            }
-                        }
-                        
-                        if let tableData = parseTable(tableLines) {
-                            blocks.append(.table(tableData))
-                        } else {
-                            // Fallback: treat as text if parsing failed
-                            currentText += tableLines.joined(separator: "\n") + "\n"
-                        }
-                        continue
-                    }
-                }
-            }
-            
-            // Check for tool result patterns (customize this based on your LLM's output format)
-            if line.contains("Tool:") || line.contains("Result:") || line.hasPrefix("[") && line.contains("]") {
-                // Save any accumulated text
-                if !currentText.isEmpty {
-                    blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
-                    currentText = ""
-                }
-                
-                var toolResultLines: [String] = [line]
-                i += 1
-                
-                // Collect subsequent lines that look like tool output
-                while i < lines.count && (lines[i].isEmpty || lines[i].hasPrefix(" ") || lines[i].hasPrefix("\t") || lines[i].contains(":")) {
-                    toolResultLines.append(lines[i])
-                    i += 1
-                    
-                    // Break if we hit a code block or regular text
-                    if i < lines.count && (lines[i].hasPrefix("```") || (!lines[i].isEmpty && !lines[i].hasPrefix(" ") && !lines[i].contains(":"))) {
-                        break
-                    }
-                }
-                
-                blocks.append(.toolResult(toolResultLines.joined(separator: "\n")))
-                continue
-            }
-            
-            // Regular text line
-            currentText += line + "\n"
-            i += 1
-        }
-        
-        // Add any remaining text
-        if !currentText.isEmpty {
-            blocks.append(.text(parseMarkdown(currentText.trimmingCharacters(in: .whitespacesAndNewlines))))
-        }
-        
-        return blocks
-    }
-    
-    private func parseTable(_ lines: [String]) -> TableData? {
-        guard lines.count >= 2 else { return nil }
-        
-        func parseRow(_ line: String) -> [String] {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            // Remove leading/trailing pipes if present
-            var content = trimmed
-            if content.hasPrefix("|") { content.removeFirst() }
-            if content.hasSuffix("|") { content.removeLast() }
-            
-            // Split by pipe
-            return content.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
-        }
-        
-        let headers = parseRow(lines[0])
-        guard !headers.isEmpty else { return nil }
-        
-        var rows: [[String]] = []
-        for i in 2..<lines.count {
-            let row = parseRow(lines[i])
-            // Only add if it looks like a valid row (has content)
-            if !row.isEmpty {
-                // Pad with empty strings if fewer cells than headers
-                var paddedRow = row
-                if paddedRow.count < headers.count {
-                    paddedRow.append(contentsOf: Array(repeating: "", count: headers.count - paddedRow.count))
-                }
-                // Truncate if more cells than headers
-                if paddedRow.count > headers.count {
-                    paddedRow = Array(paddedRow.prefix(headers.count))
-                }
-                rows.append(paddedRow)
-            }
-        }
-        
-        return TableData(headers: headers, rows: rows)
-    }
-    
-    private func parseMarkdown(_ text: String) -> AttributedString {
-        var result = AttributedString()
-        let lines = text.components(separatedBy: .newlines)
-        
-        for (lineIndex, line) in lines.enumerated() {
-            var lineText = line
-            var isBold = false
-            var currentString = ""
-            var attributedLine = AttributedString()
-            
-            // Check if line starts with markdown header
-            if lineText.hasPrefix("# ") {
-                lineText = String(lineText.dropFirst(2))
-                var headerAttr = AttributedString(lineText)
-                headerAttr.font = fontStyle.apply(size: 24, weight: .bold)
-                headerAttr.foregroundColor = .white
-                attributedLine.append(headerAttr)
-            } else if lineText.hasPrefix("## ") {
-                lineText = String(lineText.dropFirst(3))
-                var headerAttr = AttributedString(lineText)
-                headerAttr.font = fontStyle.apply(size: 20, weight: .bold)
-                headerAttr.foregroundColor = .white
-                attributedLine.append(headerAttr)
-            } else if lineText.hasPrefix("### ") {
-                lineText = String(lineText.dropFirst(4))
-                var headerAttr = AttributedString(lineText)
-                headerAttr.font = fontStyle.apply(size: 18, weight: .bold)
-                headerAttr.foregroundColor = .white
-                attributedLine.append(headerAttr)
-            } else if lineText.hasPrefix("- ") || lineText.hasPrefix("* ") {
-                // Bullet point - parse inline formatting
-                attributedLine = parseInlineFormatting(lineText)
-            } else {
-                // Regular text - parse inline formatting
-                attributedLine = parseInlineFormatting(lineText)
-            }
-            
-            result.append(attributedLine)
-            
-            // Add newline between lines (except for the last one)
-            if lineIndex < lines.count - 1 {
-                result.append(AttributedString("\n"))
-            }
-        }
-        
-        return result
-    }
-    
-    private func parseInlineFormatting(_ text: String) -> AttributedString {
-        do {
-            var attributed = try AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-            
-            // Set base font and color
-            // SwiftUI will apply bold/italic traits from markdown on top of this base font
-            attributed.font = fontStyle.apply(size: 17, weight: .regular)
-            attributed.foregroundColor = .white
-            
-            return attributed
-        } catch {
-            // Fallback to plain text if parsing fails
-            var attributed = AttributedString(text)
-            attributed.font = fontStyle.apply(size: 17, weight: .regular)
-            attributed.foregroundColor = .white
-            return attributed
-        }
-    }
-}
-
-enum SidePanelContentView {
-    case navigation
-    case chatHistory
-    case settings
-}
-
-struct SidePanelContainerView: View {
-    @ObservedObject var conversationManager: ConversationManager
-    @Binding var showKeyboardOnLaunch: Bool
-    @Binding var serverAddress: String
-    @Binding var systemPrompt: String
-    @Binding var selectedTheme: ChatView.AppTheme
-    @Binding var selectedFontStyle: ChatView.FontStyle
-    @Binding var safetyLevel: ChatView.SafetyLevel
-    @Binding var currentView: SidePanelContentView
-    @Binding var isPresented: Bool
-    
-    var body: some View {
-        ZStack {
-            if currentView == .navigation {
-                NavigationSidebarView(
-                    conversationManager: conversationManager,
-                    currentView: $currentView,
-                    isPresented: $isPresented
-                )
-                .transition(.move(edge: .leading))
-            } else if currentView == .chatHistory {
-                ChatHistoryView(
-                    conversationManager: conversationManager,
-                    currentView: $currentView,
-                    isPresented: $isPresented
-                )
-                .transition(.move(edge: .leading))
-            } else {
-                SettingsView(
-                    conversationManager: conversationManager,
-                    showKeyboardOnLaunch: $showKeyboardOnLaunch,
-                    serverAddress: $serverAddress,
-                    systemPrompt: $systemPrompt,
-                    selectedTheme: $selectedTheme,
-                    selectedFontStyle: $selectedFontStyle,
-                    safetyLevel: $safetyLevel,
-                    isInSidePanel: true,
-                    onBack: {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            currentView = .navigation
-                        }
-                    },
-                    onDismiss: {
-                        isPresented = false
-                    }
-                )
-                .transition(.move(edge: .trailing))
-            }
-        }
-        .animation(.easeInOut(duration: 0.3), value: currentView)
-    }
-}
-
-struct ChatHistoryView: View {
-    @ObservedObject var conversationManager: ConversationManager
-    @Binding var currentView: SidePanelContentView
-    @Binding var isPresented: Bool
-    
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Text("Chat History")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button(action: { 
-                        isPresented = false
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 60)
-                .padding(.bottom, 20)
-                
-                // Chat History List
-                if conversationManager.conversationHistory.isEmpty {
-                    VStack(spacing: 16) {
-                        Spacer()
-                        Image(systemName: "bubble.left.and.bubble.right")
-                            .font(.system(size: 60))
-                            .foregroundColor(.white.opacity(0.3))
-                        Text("No chat history")
-                            .font(.title3)
-                            .foregroundColor(.white.opacity(0.5))
-                        Text("Start a conversation to see it here")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.4))
-                        Spacer()
-                    }
-                } else {
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            ForEach(conversationManager.conversationHistory) { conversation in
-                                ConversationHistoryRow(
-                                    conversation: conversation,
-                                    conversationManager: conversationManager,
-                                    isPresented: $isPresented
-                                )
-                            }
-                        }
-                        .padding(.vertical, 20)
+                        .font(DesignSystem.Typography.body())
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .padding(.horizontal, 16)
-                    }
+                        .padding(.vertical, 12)
+                        .background(DesignSystem.Colors.accentSoft)
+                        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous)
+                                .stroke(DesignSystem.Colors.accentStroke, lineWidth: DesignSystem.Layout.borderWidth)
+                        )
+                        .shadow(color: DesignSystem.Colors.accent.opacity(0.10), radius: 18, x: 0, y: 10)
                 }
+                .frame(maxWidth: 320, alignment: .trailing)
+            } else {
+                // AI Icon
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14))
+                    .foregroundStyle(DesignSystem.Colors.accent)
+                    .frame(width: 24, height: 24)
+                    .background(DesignSystem.Colors.surfaceElevated)
+                    .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
+                            .stroke(DesignSystem.Colors.border.opacity(0.8), lineWidth: DesignSystem.Layout.borderWidth)
+                    )
+                    .padding(.top, 4)
                 
-                Divider()
-                    .background(Color.white.opacity(0.2))
-                
-                // Settings Button at Bottom
-                Button(action: {
-                    currentView = .settings
-                }) {
-                    HStack(spacing: 16) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.title3)
-                            .foregroundColor(.white)
-                            .frame(width: 30)
-                        
-                        Text("Settings")
-                            .font(.body)
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .background(Color.white.opacity(0.05))
-                }
-            }
-        }
-    }
-}
-
-// New sheet-style conversation history view
-struct ChatHistorySheetView: View {
-    @ObservedObject var conversationManager: ConversationManager
-    @Binding var isPresented: Bool
-    @State private var searchText = ""
-    
-    private var filteredConversations: [Conversation] {
-        if searchText.isEmpty {
-            return conversationManager.conversationHistory
-        }
-        return conversationManager.conversationHistory.filter { conversation in
-            conversation.messages.contains { message in
-                message.content.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-    }
-    
-    private var shouldShowCurrentConversation: Bool {
-        guard !conversationManager.currentConversation.messages.isEmpty else {
-            return false
-        }
-        
-        if searchText.isEmpty {
-            return true
-        }
-        
-        return conversationManager.currentConversation.messages.contains { message in
-            message.content.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-    
-    var body: some View {
-        NavigationView {
-            ZStack {
-                Color(UIColor.systemBackground).ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Search bar at top
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        TextField("Search", text: $searchText)
-                    }
-                    .padding()
-                    .background(Color(UIColor.systemGray6))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-                    
-                    // Conversations List
-                    if conversationManager.conversationHistory.isEmpty && conversationManager.currentConversation.messages.isEmpty {
-                        VStack(spacing: 16) {
-                            Spacer()
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 60))
-                                .foregroundColor(.secondary.opacity(0.5))
-                            Text("No conversations")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                            Text("Start a conversation to see it here")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary.opacity(0.8))
-                            Spacer()
-                        }
-                    } else if !searchText.isEmpty && !shouldShowCurrentConversation && filteredConversations.isEmpty {
-                        // Show "no results" when searching
-                        VStack(spacing: 16) {
-                            Spacer()
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 60))
-                                .foregroundColor(.secondary.opacity(0.5))
-                            Text("No results found")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                            Text("Try a different search term")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary.opacity(0.8))
-                            Spacer()
-                        }
-                    } else {
-                        ScrollView {
-                            VStack(spacing: 0) {
-                                // Section header
-                                HStack {
-                                    Text(searchText.isEmpty ? "Recents" : "Search Results")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                
-                                // Current conversation if it has messages and matches search
-                                if shouldShowCurrentConversation {
-                                    ConversationSheetRow(
-                                        conversation: conversationManager.currentConversation,
-                                        conversationManager: conversationManager,
-                                        isPresented: $isPresented,
-                                        isCurrent: true
-                                    )
-                                }
-                                
-                                // History (filtered)
-                                ForEach(filteredConversations) { conversation in
-                                    ConversationSheetRow(
-                                        conversation: conversation,
-                                        conversationManager: conversationManager,
-                                        isPresented: $isPresented,
-                                        isCurrent: false
-                                    )
-                                }
-                            }
-                            .padding(.bottom, 20)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Conversations")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        isPresented = false
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct ConversationSheetRow: View {
-    let conversation: Conversation
-    @ObservedObject var conversationManager: ConversationManager
-    @Binding var isPresented: Bool
-    let isCurrent: Bool
-    @State private var offset: CGFloat = 0
-    
-    private var previewText: String {
-        if let firstMessage = conversation.messages.first(where: { $0.isUser }) {
-            return firstMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return "Empty conversation"
-    }
-    
-    private var formattedDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: conversation.createdAt, relativeTo: Date())
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .trailing) {
-                // Main conversation row - placed FIRST so it's behind
-                Button(action: {
-                    // Only respond to tap if not swiped
-                    if offset == 0 {
-                        if !isCurrent {
-                            conversationManager.loadConversation(conversation)
-                        }
-                        isPresented = false
-                    } else {
-                        // Close the swipe if open
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            offset = 0
-                        }
-                    }
-                }) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(previewText)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        Text(formattedDate)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .background(Color(UIColor.systemBackground))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-                .zIndex(1)
-                .offset(x: offset)
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 10)
-                        .onChanged { value in
-                            if value.translation.width < 0 {
-                                offset = max(value.translation.width, -80)
-                            } else if offset < 0 {
-                                offset = min(value.translation.width + offset, 0)
-                            }
-                        }
-                        .onEnded { value in
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                if value.translation.width < -40 && offset > -40 {
-                                    offset = -80
-                                } else if value.translation.width > 40 || (offset < 0 && value.translation.width > 0) {
-                                    offset = 0
-                                } else if offset < -40 {
-                                    offset = -80
-                                } else {
-                                    offset = 0
-                                }
-                            }
-                        }
-                )
-                
-                // Delete button background (revealed on swipe) - behind the main row
-                if offset < 0 {
-                    HStack {
-                        Spacer()
-                        Button(action: {
-                            withAnimation {
-                                if !isCurrent {
-                                    conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
-                                } else {
-                                    conversationManager.newConversation()
-                                }
-                                offset = 0
-                            }
-                        }) {
-                            VStack {
-                                Image(systemName: "trash.fill")
-                                    .foregroundColor(.white)
-                                    .font(.title3)
-                            }
-                            .frame(width: 80)
-                            .frame(maxHeight: .infinity)
-                            .background(Color.red)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                    .zIndex(0)
-                }
-            }
-            .clipped()
-            
-            Divider()
-                .padding(.leading, 20)
-        }
-    }
-}
-
-struct ConversationHistoryRow: View {
-    let conversation: Conversation
-    @ObservedObject var conversationManager: ConversationManager
-    @Binding var isPresented: Bool
-    @State private var offset: CGFloat = 0
-    
-    private var previewText: String {
-        if let firstMessage = conversation.messages.first {
-            return firstMessage.content
-        }
-        return "Empty conversation"
-    }
-    
-    private var messageCount: Int {
-        return conversation.messages.count
-    }
-    
-    private var formattedDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: conversation.createdAt, relativeTo: Date())
-    }
-    
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            // Main conversation row - placed FIRST
-            Button(action: {
-                // Only load conversation if not swiped
-                if offset == 0 {
-                    conversationManager.loadConversation(conversation)
-                    isPresented = false
-                } else {
-                    // Close the swipe if open
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        offset = 0
-                    }
-                }
-            }) {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(formattedDate)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.caption2)
-                            Text("\(messageCount)")
-                                .font(.caption)
-                        }
-                        .foregroundColor(.white.opacity(0.5))
-                    }
-                    
-                    Text(previewText)
-                        .font(.body)
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.1))
-                .cornerRadius(12)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal, 16)
-            .zIndex(1)
-            .offset(x: offset)
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { value in
-                        if value.translation.width < 0 {
-                            offset = max(value.translation.width, -70)
-                        } else if offset < 0 {
-                            offset = min(value.translation.width + offset, 0)
-                        }
-                    }
-                    .onEnded { value in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            if value.translation.width < -35 && offset > -35 {
-                                offset = -70
-                            } else if value.translation.width > 35 || (offset < 0 && value.translation.width > 0) {
-                                offset = 0
-                            } else if offset < -35 {
-                                offset = -70
-                            } else {
-                                offset = 0
+                    // Thinking Content
+                    if let thinkingContent = message.thinkingContent, !thinkingContent.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    isThinkingExpanded.toggle()
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "brain")
+                                        .font(.system(size: 12))
+                                    Text("PROCESS")
+                                        .font(DesignSystem.Typography.caption().weight(.semibold))
+                                    Spacer()
+                                    Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 10))
+                                }
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .padding(8)
+                                .background(DesignSystem.Colors.surfaceHighlight)
+                            }
+                            .buttonStyle(.plain)
+                            
+                            if isThinkingExpanded {
+                                Text(thinkingContent)
+                                    .font(DesignSystem.Typography.code())
+                                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                    .padding(8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(DesignSystem.Colors.background2)
                             }
                         }
+                        .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous)
+                                .stroke(DesignSystem.Colors.border.opacity(0.75), lineWidth: DesignSystem.Layout.borderWidth)
+                        )
                     }
-            )
-            
-            // Delete button (revealed on swipe) - only show when offset is negative
-            if offset < 0 {
-                HStack {
-                    Spacer()
-                    VStack {
-                        Image(systemName: "trash.fill")
-                            .foregroundColor(.white)
-                            .font(.title3)
-                    }
-                    .frame(width: 70)
-                    .frame(maxHeight: .infinity)
-                    .background(Color.red)
-                    .cornerRadius(12)
-                    .onTapGesture {
-                        withAnimation {
-                            conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
-                            offset = 0
-                        }
-                    }
+                    
+                    // Message Content
+                    Text(LocalizedStringKey(message.content))
+                        .font(DesignSystem.Typography.body())
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineSpacing(4)
                 }
-                .padding(.horizontal, 16)
-                .zIndex(0)
+                .padding(14)
+                .background(DesignSystem.Colors.surfaceElevated)
+                .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous)
+                        .stroke(DesignSystem.Colors.border.opacity(0.65), lineWidth: DesignSystem.Layout.borderWidth)
+                )
             }
         }
-        .clipped()
     }
 }
 
 struct ThinkingIndicator: View {
-    let fontStyle: ChatView.FontStyle
-    @State private var animationAmount = 0.0
+    @State private var blink = false
     
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "brain")
-                    .font(.system(size: 14))
-                    .foregroundColor(.white.opacity(0.8))
-                
-                Text("Thinking")
-                    .font(fontStyle.apply(size: 15, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
-                
-                // Animated dots
-                HStack(spacing: 3) {
-                    ForEach(0..<3) { index in
-                        Circle()
-                            .fill(Color.white.opacity(0.7))
-                            .frame(width: 4, height: 4)
-                            .opacity(animationAmount == Double(index) ? 0.3 : 1.0)
-                            .animation(
-                                Animation.easeInOut(duration: 0.6)
-                                    .repeatForever(autoreverses: true)
-                                    .delay(Double(index) * 0.2),
-                                value: animationAmount
-                            )
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.1))
-            .cornerRadius(20)
-            .frame(maxWidth: 280, alignment: .leading)
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14))
+                .foregroundStyle(DesignSystem.Colors.accent)
+                .frame(width: 24, height: 24)
+                .background(DesignSystem.Colors.surfaceElevated)
+                .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusTiny, style: .continuous)
+                        .stroke(DesignSystem.Colors.border.opacity(0.8), lineWidth: DesignSystem.Layout.borderWidth)
+                )
             
-            Spacer()
+            Text("PROCESSING...")
+                .font(DesignSystem.Typography.caption())
+                .foregroundStyle(DesignSystem.Colors.accent)
+                .opacity(blink ? 0.3 : 1.0)
+                .animation(.easeInOut(duration: 0.8).repeatForever(), value: blink)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
-            animationAmount = 1.0
+            blink = true
         }
     }
 }
 
-struct TypingIndicator: View {
-    @State private var animationAmount = 0.0
-    
-    var body: some View {
-        HStack(alignment: .center, spacing: 0) {
-            HStack(spacing: 8) {
-                ForEach(0..<3) { index in
-                    Circle()
-                        .fill(Color.white.opacity(0.8))
-                        .frame(width: 8, height: 8)
-                        .scaleEffect(animationAmount == Double(index) ? 1.3 : 1.0)
-                        .animation(
-                            Animation.easeInOut(duration: 0.6)
-                                .repeatForever(autoreverses: true)
-                                .delay(Double(index) * 0.2),
-                            value: animationAmount
-                        )
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.1))
-            .cornerRadius(20)
-            .frame(maxWidth: 280, alignment: .leading)
-            
-            Spacer()
-        }
-        .onAppear {
-            animationAmount = 1.0
-        }
-    }
-}
-
-// MARK: - Navigation Sidebar
-struct NavigationSidebarView: View {
-    @ObservedObject var conversationManager: ConversationManager
-    @Binding var currentView: SidePanelContentView
-    @Binding var isPresented: Bool
-    @State private var searchText = ""
-    @State private var projects = ["New project"]
-    
-    private var filteredConversations: [Conversation] {
-        if searchText.isEmpty {
-            return conversationManager.conversationHistory
-        }
-        return conversationManager.conversationHistory.filter { conversation in
-            conversation.messages.contains { message in
-                message.content.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-    }
-    
-    private var shouldShowCurrentConversation: Bool {
-        guard !conversationManager.currentConversation.messages.isEmpty else {
-            return false
-        }
-        
-        if searchText.isEmpty {
-            return true
-        }
-        
-        return conversationManager.currentConversation.messages.contains { message in
-            message.content.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-    
-    private var isSearching: Bool {
-        !searchText.isEmpty
-    }
-    
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Search Bar and New Chat Button
-                HStack(spacing: 8) {
-                    // Search Bar - Takes more width
-                    HStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.gray)
-                            .font(.system(size: 16))
-                        
-                        TextField("Search", text: $searchText)
-                            .foregroundColor(.white)
-                            .font(.system(size: 17))
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(10)
-                    
-                    // New Chat Button - Smaller and more compact
-                    Button(action: { 
-                        conversationManager.newConversation()
-                        isPresented = false
-                    }) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(10)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 60)
-                .padding(.bottom, 20)
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        // Only show main navigation items when not searching
-                        if !isSearching {
-                            // Main Navigation Items - Grouped
-                            VStack(spacing: 0) {
-                                NavItem(icon: "sparkles", title: "Atlas", isFirst: true) {
-                                    isPresented = false
-                                }
-                                
-                                NavItem(icon: "book", title: "Library") {
-                                    // Handle library tap
-                                }
-                                
-                                NavItem(icon: "clock", title: "Codex", isLast: true) {
-                                    // Handle Codex tap
-                                }
-                            }
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(12)
-                            .padding(.horizontal, 16)
-                            
-                            // Projects Section - Grouped
-                            VStack(spacing: 0) {
-                                ForEach(Array(projects.enumerated()), id: \.element) { index, project in
-                                    NavItem(
-                                        icon: "folder",
-                                        title: project,
-                                        isFirst: index == 0,
-                                        isLast: index == projects.count - 1
-                                    ) {
-                                        // Handle project tap
-                                    }
-                                }
-                            }
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(12)
-                            .padding(.horizontal, 16)
-                        }
-                        
-                        // Show search results or conversation history
-                        if isSearching && !shouldShowCurrentConversation && filteredConversations.isEmpty {
-                            // No results found
-                            VStack(spacing: 16) {
-                                Spacer()
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(.white.opacity(0.3))
-                                Text("No results found")
-                                    .font(.body)
-                                    .foregroundColor(.white.opacity(0.6))
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
-                        } else {
-                            // Conversation History - Ungrouped, just a list
-                            VStack(alignment: .leading, spacing: 8) {
-                                // Show section header when searching
-                                if isSearching {
-                                    Text("Search Results")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.5))
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 8)
-                                }
-                                
-                                // Current Conversation (if it has messages and matches search)
-                                if shouldShowCurrentConversation {
-                                    ConversationNavItem(
-                                        conversation: conversationManager.currentConversation,
-                                        conversationManager: conversationManager,
-                                        isPresented: $isPresented,
-                                        isCurrent: true
-                                    )
-                                    .padding(.horizontal, 16)
-                                }
-                                
-                                // Conversation History (filtered)
-                                ForEach(filteredConversations) { conversation in
-                                    ConversationNavItem(
-                                        conversation: conversation,
-                                        conversationManager: conversationManager,
-                                        isPresented: $isPresented,
-                                        isCurrent: false
-                                    )
-                                    .padding(.horizontal, 16)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.bottom, 20)
-                }
-                
-                // Bottom Settings Button
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        currentView = .settings
-                    }
-                }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 20))
-                            .foregroundColor(.white)
-                        
-                        Text("Settings")
-                            .font(.system(size: 15))
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-    }
-}
-
-struct ConversationNavItem: View {
-    let conversation: Conversation
-    @ObservedObject var conversationManager: ConversationManager
-    @Binding var isPresented: Bool
-    let isCurrent: Bool
-    @State private var offset: CGFloat = 0
-    
-    private var previewText: String {
-        if let firstMessage = conversation.messages.first(where: { $0.isUser }) {
-            let text = firstMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? "Empty conversation" : text
-        }
-        return "Empty conversation"
-    }
-    
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            // Main conversation item - simple text button - placed FIRST
-            Button(action: {
-                // Only load conversation if not swiped
-                if offset == 0 {
-                    if !isCurrent {
-                        conversationManager.loadConversation(conversation)
-                    }
-                    isPresented = false
-                } else {
-                    // Close the swipe if open
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        offset = 0
-                    }
-                }
-            }) {
-                Text(previewText)
-                    .font(.system(size: 15))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .background(Color.black)
-            .zIndex(1)
-            .offset(x: offset)
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { value in
-                        if value.translation.width < 0 {
-                            offset = max(value.translation.width, -70)
-                        } else if offset < 0 {
-                            offset = min(value.translation.width + offset, 0)
-                        }
-                    }
-                    .onEnded { value in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            if value.translation.width < -35 && offset > -35 {
-                                offset = -70
-                            } else if value.translation.width > 35 || (offset < 0 && value.translation.width > 0) {
-                                offset = 0
-                            } else if offset < -35 {
-                                offset = -70
-                            } else {
-                                offset = 0
-                            }
-                        }
-                    }
-            )
-            
-            // Delete button (revealed on swipe) - only show when offset is negative
-            if offset < 0 {
-                HStack {
-                    Spacer()
-                    VStack {
-                        Image(systemName: "trash.fill")
-                            .foregroundColor(.white)
-                    }
-                    .frame(width: 70)
-                    .frame(maxHeight: .infinity)
-                    .background(Color.red)
-                    .onTapGesture {
-                        withAnimation {
-                            if !isCurrent {
-                                conversationManager.conversationHistory.removeAll { $0.id == conversation.id }
-                            } else {
-                                conversationManager.newConversation()
-                            }
-                            offset = 0
-                        }
-                    }
-                }
-                .zIndex(0)
-            }
-        }
-        .clipped()
-    }
-}
-
-struct NavItem: View {
-    let icon: String
-    let title: String
-    var isFirst: Bool = false
-    var isLast: Bool = false
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(.white)
-                    .frame(width: 24)
-                
-                Text(title)
-                    .font(.system(size: 15))
-                    .foregroundColor(.white)
-                
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
-        .overlay(
-            // Add subtle divider between items (not on last item)
-            Group {
-                if !isLast {
-                    VStack {
-                        Spacer()
-                        Rectangle()
-                            .fill(Color.white.opacity(0.05))
-                            .frame(height: 0.5)
-                            .padding(.leading, 56) // Indent to align with text
-                    }
-                }
-            }
-        )
-    }
-}
 
 #Preview {
     ChatView()
 }
-

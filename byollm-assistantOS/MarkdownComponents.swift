@@ -34,11 +34,11 @@ struct MarkdownTableView: View {
                     }
                 }
             }
-            .background(Color.black.opacity(0.2))
-            .cornerRadius(8)
+            .background(DesignSystem.Colors.surfaceElevated.opacity(0.9))
+            .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadius, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.8), lineWidth: DesignSystem.Layout.borderWidth)
             )
         }
     }
@@ -49,19 +49,20 @@ struct TableHeaderCell: View {
     
     var body: some View {
         Text(parseMarkdown(text))
-            .font(.system(size: 14, weight: .bold))
-            .foregroundColor(.white)
+            .font(DesignSystem.Typography.body())
+            .fontWeight(.semibold)
+            .foregroundStyle(DesignSystem.Colors.textPrimary)
             .multilineTextAlignment(.leading)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.15))
-            .border(Color.white.opacity(0.1), width: 0.5)
+            .background(DesignSystem.Colors.surfaceHighlight.opacity(0.85))
+            .border(DesignSystem.Colors.separator, width: DesignSystem.Layout.borderWidth)
     }
     
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
             var attributed = try AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-            attributed.foregroundColor = .white
+            attributed.foregroundColor = DesignSystem.Colors.textPrimary
             return attributed
         } catch {
             return AttributedString(text)
@@ -75,19 +76,19 @@ struct TableRowCell: View {
     
     var body: some View {
         Text(parseMarkdown(text))
-            .font(.system(size: 14))
-            .foregroundColor(.white.opacity(0.9))
+            .font(DesignSystem.Typography.caption())
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
             .multilineTextAlignment(.leading)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isAlternateRow ? Color.white.opacity(0.05) : Color.clear)
-            .border(Color.white.opacity(0.1), width: 0.5)
+            .background(isAlternateRow ? DesignSystem.Colors.surface.opacity(0.75) : DesignSystem.Colors.surfaceElevated.opacity(0.6))
+            .border(DesignSystem.Colors.separator, width: DesignSystem.Layout.borderWidth)
     }
     
     private func parseMarkdown(_ text: String) -> AttributedString {
         do {
             var attributed = try AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-            attributed.foregroundColor = .white.opacity(0.9)
+            attributed.foregroundColor = DesignSystem.Colors.textSecondary
             return attributed
         } catch {
             return AttributedString(text)
