@@ -349,30 +349,11 @@ struct SettingsView: View {
                                 }
                                 .padding(16)
                                 
-                                Divider().background(DesignSystem.Colors.separator).padding(.leading, 56)
-                                
-                                // Reload models
-                                Button(action: onRefreshModels) {
-                                    HStack(spacing: 16) {
-                                        Image(systemName: "arrow.clockwise")
-                                            .font(.system(size: 18))
-                                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                            .frame(width: 24)
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Refresh models")
-                                                .font(DesignSystem.Typography.body())
-                                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                            Text("Pulls latest list from your server.")
-                                                .font(DesignSystem.Typography.caption())
-                                                .foregroundStyle(DesignSystem.Colors.textTertiary)
-                                        }
-                                        
-                                        Spacer()
-                                    }
-                                    .padding(16)
-                                }
-                                .buttonStyle(.plain)
+                                Text("Model list updates automatically when your server settings change.")
+                                    .font(DesignSystem.Typography.caption())
+                                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.bottom, supportsReasoningEffort(selectedModel) ? 0 : 12)
                                 
                                 if supportsReasoningEffort(selectedModel) {
                                     Divider().background(DesignSystem.Colors.separator).padding(.leading, 56)
@@ -435,17 +416,20 @@ struct SettingsView: View {
                             
                             VStack(spacing: 0) {
                                 // Appearance
-                                HStack(spacing: 16) {
-                                    Image(systemName: "circle.lefthalf.filled")
-                                        .font(.system(size: 18))
-                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                        .frame(width: 24)
-                                    
-                                    Text("Appearance")
-                                        .font(DesignSystem.Typography.body())
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                    
-                                    Spacer()
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack(spacing: 16) {
+                                        Image(systemName: "circle.lefthalf.filled")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                            .frame(width: 24)
+                                        
+                                        Text("Appearance")
+                                            .font(DesignSystem.Typography.body())
+                                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                            .lineLimit(1)
+                                        
+                                        Spacer()
+                                    }
                                     
                                     Picker("", selection: $appAppearanceRaw) {
                                         ForEach(AppAppearance.allCases) { option in
@@ -454,7 +438,6 @@ struct SettingsView: View {
                                     }
                                     .labelsHidden()
                                     .pickerStyle(.segmented)
-                                    .frame(width: 220)
                                 }
                                 .padding(16)
                                 

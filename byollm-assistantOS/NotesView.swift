@@ -60,6 +60,13 @@ final class NotesStore: ObservableObject {
         return note
     }
     
+    func create(title: String, body: String, now: Date = Date()) -> Note {
+        let note = Note(title: title, body: body, createdAt: now, updatedAt: now)
+        notes.insert(note, at: 0)
+        save()
+        return note
+    }
+    
     func upsert(_ note: Note) {
         if let index = notes.firstIndex(where: { $0.id == note.id }) {
             notes[index] = note
@@ -110,6 +117,7 @@ struct NotesView: View {
     @StateObject private var store = NotesStore()
     @State private var query: String = ""
     @State private var editorNote: Note?
+    @StateObject private var transcriber = VoiceNoteTranscriber()
     
     private var filteredNotes: [Note] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -162,6 +170,16 @@ struct NotesView: View {
                     }
                 )
             }
+            .onChange(of: transcriber.finalTranscript) { _, newValue in
+                guard let text = newValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !text.isEmpty
+                else { return }
+                
+                let title = VoiceNoteTitleBuilder.title(for: Date())
+                let created = store.create(title: title, body: text)
+                editorNote = created
+                transcriber.consumeFinalTranscript()
+            }
         }
     }
     
@@ -173,6 +191,41 @@ struct NotesView: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 
                 Spacer()
+                
+                Button {
+                    switch transcriber.state {
+                    case .recording:
+                        transcriber.stop()
+                    case .idle, .error:
+                        transcriber.resetError()
+                        Task { await transcriber.start() }
+                    case .transcribing:
+                        break
+                    }
+                } label: {
+                    Group {
+                        switch transcriber.state {
+                        case .recording:
+                            Image(systemName: "stop.circle.fill")
+                        case .transcribing:
+                            Image(systemName: "waveform.circle.fill")
+                        case .idle, .error:
+                            Image(systemName: "mic")
+                        }
+                    }
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(transcriber.state == .recording ? DesignSystem.Colors.error : DesignSystem.Colors.accent)
+                    .frame(width: 44, height: 44)
+                    .background(DesignSystem.Colors.surfaceElevated)
+                    .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous)
+                            .stroke(DesignSystem.Colors.border.opacity(0.7), lineWidth: DesignSystem.Layout.borderWidth)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(transcriber.state == .recording ? "Stop recording" : "Record voice note")
+                .disabled(transcriber.state == .transcribing)
                 
                 Button {
                     editorNote = store.create()
@@ -221,6 +274,36 @@ struct NotesView: View {
             )
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
+            
+            if case .error(let message) = transcriber.state {
+                Button {
+                    transcriber.resetError()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                        Text(message)
+                            .font(DesignSystem.Typography.caption())
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .lineLimit(2)
+                        Spacer(minLength: 0)
+                        Text("Dismiss")
+                            .font(DesignSystem.Typography.caption().weight(.semibold))
+                            .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(DesignSystem.Colors.surfaceElevated)
+                    .clipShape(.rect(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Layout.cornerRadiusSmall, style: .continuous)
+                            .stroke(DesignSystem.Colors.border.opacity(0.7), lineWidth: DesignSystem.Layout.borderWidth)
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .background(DesignSystem.Colors.chrome.opacity(0.98))
         .overlay(

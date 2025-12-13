@@ -118,37 +118,33 @@ final class TasksStore: ObservableObject {
 
 struct TasksView: View {
     @StateObject private var store = TasksStore()
-    @State private var selectedFilter: TaskFilter = .inbox
+    @State private var selectedFilter: TaskListFilter = .inbox
     @State private var editorTask: TaskItem?
     
-    enum TaskFilter: String, CaseIterable, Identifiable {
-        case inbox = "Inbox"
-        case today = "Today"
-        case upcoming = "Upcoming"
-        case done = "Done"
-        
-        var id: String { rawValue }
+    private var now: Date { Date() }
+    private var calendar: Calendar { .current }
+    
+    private var inboxSections: [(bucket: TaskBucket, tasks: [TaskItem])] {
+        let open = TaskBucketing.filteredTasks(tasks: store.tasks, filter: .inbox, now: now, calendar: calendar)
+        return TaskBucketing.sections(for: open, now: now, calendar: calendar)
     }
     
-    private var filteredTasks: [TaskItem] {
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: Date())
-        let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday
-        
-        return store.tasks.filter { task in
-            switch selectedFilter {
-            case .inbox:
-                return !task.isDone && task.dueDate == nil
-            case .today:
-                guard let due = task.dueDate else { return false }
-                return !task.isDone && due >= startOfToday && due < startOfTomorrow
-            case .upcoming:
-                guard let due = task.dueDate else { return false }
-                return !task.isDone && due >= startOfTomorrow
-            case .done:
-                return task.isDone
-            }
-        }
+    private var todayTasks: [TaskItem] {
+        TaskBucketing.sortForList(
+            TaskBucketing.filteredTasks(tasks: store.tasks, filter: .today, now: now, calendar: calendar)
+        )
+    }
+    
+    private var upcomingSections: [(bucket: TaskBucket, tasks: [TaskItem])] {
+        let upcoming = TaskBucketing.filteredTasks(tasks: store.tasks, filter: .upcoming, now: now, calendar: calendar)
+        return TaskBucketing.sections(for: upcoming, now: now, calendar: calendar)
+            .filter { $0.bucket == .next7Days || $0.bucket == .later }
+    }
+    
+    private var doneTasks: [TaskItem] {
+        TaskBucketing.sortForList(
+            TaskBucketing.filteredTasks(tasks: store.tasks, filter: .done, now: now, calendar: calendar)
+        )
     }
     
     var body: some View {
@@ -159,23 +155,10 @@ struct TasksView: View {
                 VStack(spacing: 0) {
                     header
                     
-                    if filteredTasks.isEmpty {
+                    if isEmpty {
                         emptyState
                     } else {
-                        List {
-                            ForEach(filteredTasks) { task in
-                                TaskRow(
-                                    task: task,
-                                    onToggleDone: { store.toggleDone(task) }
-                                )
-                                .contentShape(Rectangle())
-                                .onTapGesture { editorTask = task }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparatorTint(DesignSystem.Colors.separator)
-                            }
-                        }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
+                        tasksList
                     }
                 }
             }
@@ -192,6 +175,95 @@ struct TasksView: View {
                     }
                 )
             }
+        }
+    }
+    
+    private var isEmpty: Bool {
+        switch selectedFilter {
+        case .inbox:
+            return inboxSections.isEmpty
+        case .today:
+            return todayTasks.isEmpty
+        case .upcoming:
+            return upcomingSections.isEmpty
+        case .done:
+            return doneTasks.isEmpty
+        }
+    }
+    
+    @ViewBuilder
+    private var tasksList: some View {
+        switch selectedFilter {
+        case .inbox:
+            List {
+                ForEach(inboxSections, id: \.bucket) { section in
+                    Section(section.bucket.rawValue) {
+                        ForEach(section.tasks) { task in
+                            TaskRow(
+                                task: task,
+                                onToggleDone: { store.toggleDone(task) }
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture { editorTask = task }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparatorTint(DesignSystem.Colors.separator)
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        case .today:
+            List {
+                Section(TaskBucket.today.rawValue) {
+                    ForEach(todayTasks) { task in
+                        TaskRow(
+                            task: task,
+                            onToggleDone: { store.toggleDone(task) }
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { editorTask = task }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(DesignSystem.Colors.separator)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        case .upcoming:
+            List {
+                ForEach(upcomingSections, id: \.bucket) { section in
+                    Section(section.bucket.rawValue) {
+                        ForEach(section.tasks) { task in
+                            TaskRow(
+                                task: task,
+                                onToggleDone: { store.toggleDone(task) }
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture { editorTask = task }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparatorTint(DesignSystem.Colors.separator)
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        case .done:
+            List {
+                ForEach(doneTasks) { task in
+                    TaskRow(
+                        task: task,
+                        onToggleDone: { store.toggleDone(task) }
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { editorTask = task }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparatorTint(DesignSystem.Colors.separator)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
     }
     
@@ -225,7 +297,7 @@ struct TasksView: View {
             .padding(.top, 12)
             
             Picker("", selection: $selectedFilter) {
-                ForEach(TaskFilter.allCases) { filter in
+                ForEach(TaskListFilter.allCases) { filter in
                     Text(filter.rawValue).tag(filter)
                 }
             }
