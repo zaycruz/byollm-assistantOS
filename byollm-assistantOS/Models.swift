@@ -72,18 +72,12 @@ class ConversationManager: ObservableObject {
     
     // MARK: - Thinking Token Parsing
     
-    /// Check if the current model supports thinking tokens (Qwen and GPT-oss models)
+    /// Check if the current model supports thinking tokens
+    /// Always returns true to parse <think> tags from any model that uses them
     private func shouldParseThinkingTokens() -> Bool {
-        let modelLower = selectedModel.lowercased()
-        // Check for various naming patterns
-        let hasQwen = modelLower.contains("qwen") || modelLower.contains("qwq")
-        let hasGPTO = modelLower.contains("gpt-o") || modelLower.contains("gpto")
-        let hasGPTOss = modelLower.contains("gpt-oss") || modelLower.contains("gptoss")
-        let hasO1 = modelLower.contains("o1") || modelLower.contains("o3")
-        
-        let shouldParse = hasQwen || hasGPTO || hasGPTOss || hasO1
-        print("🔍 shouldParseThinkingTokens for '\(selectedModel)': \(shouldParse)")
-        return shouldParse
+        // Parse thinking tokens for all models - if the response contains <think> tags,
+        // they should be parsed and displayed in the collapsible dropdown
+        return true
     }
     
     /// Check if the current model supports reasoning effort (GPT-oss and GPT-o models)
@@ -470,7 +464,7 @@ class ConversationManager: ObservableObject {
                 // Replace the placeholder with an error message
                 if messageIndex < self.currentConversation.messages.count {
                     self.currentConversation.messages[messageIndex] = Message(
-                        content: "❌ Error: \(error.localizedDescription ?? "Unknown error")\n\nPlease check your server connection and try again.",
+                        content: "❌ Error: \(error.localizedDescription)\n\nPlease check your server connection and try again.",
                         isUser: false,
                         timestamp: self.currentConversation.messages[messageIndex].timestamp
                     )

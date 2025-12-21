@@ -13,9 +13,8 @@ struct PersonalizationView: View {
     @Binding var selectedTheme: ChatView.AppTheme
     @Binding var selectedFontStyle: ChatView.FontStyle
     @State private var selectedTab: PersonalizationTab = .aboutMe
-    @State private var baseStyle: BaseStyle = .nerdy
+    @State private var baseStyle: AssistantBaseStyle = .nerdy
     @State private var customInstructions: String = ""
-    @State private var nickname: String = ""
     @State private var occupation: String = ""
     @State private var moreAboutYou: String = ""
     @State private var showingStylePicker = false
@@ -105,33 +104,7 @@ struct PersonalizationView: View {
     }
     
     enum Field: Hashable {
-        case customInstructions, nickname, occupation, moreAboutYou
-    }
-    
-    enum BaseStyle: String, CaseIterable, Identifiable {
-        case defaultStyle = "Default"
-        case professional = "Professional"
-        case friendly = "Friendly"
-        case candid = "Candid"
-        case quirky = "Quirky"
-        case efficient = "Efficient"
-        case nerdy = "Nerdy"
-        case cynical = "Cynical"
-        
-        var id: String { rawValue }
-        
-        var description: String {
-            switch self {
-            case .defaultStyle: return "Balanced style and tone"
-            case .professional: return "Polished and precise"
-            case .friendly: return "Warm and chatty"
-            case .candid: return "Direct and encouraging"
-            case .quirky: return "Playful and imaginative"
-            case .efficient: return "Concise and plain"
-            case .nerdy: return "Exploratory and enthusiastic"
-            case .cynical: return "Critical and sarcastic"
-            }
-        }
+        case customInstructions, occupation, moreAboutYou
     }
     
     let personalityTraits = ["Chatty", "Witty", "Straight shooting", "Encouraging", "Generous"]
@@ -269,7 +242,7 @@ struct PersonalizationView: View {
                             
                             ZStack(alignment: .topLeading) {
                                 if customInstructions.isEmpty {
-                                    Text("Take a forward-thinking view. Be innovative and think outside the box. Readily share strong opinions. Be practical above all. Always explain and articulate well, don't be too succinct. Always use your memory to get context for conversations")
+                                    Text("Write any extra behavior instructions you want applied to every response.")
                                         .foregroundColor(.white.opacity(0.3))
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 12)
@@ -300,21 +273,6 @@ struct PersonalizationView: View {
                                     }
                                 }
                             }
-                        }
-                        .padding(.horizontal, 20)
-                        
-                        // Your nickname
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Your nickname")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            TextField("Zay", text: $nickname)
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(12)
-                                .focused($focusedField, equals: .nickname)
                         }
                         .padding(.horizontal, 20)
                         
@@ -435,6 +393,7 @@ struct PersonalizationView: View {
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
+                        ThemeCardButton(name: "Obsidian", colors: [Color(red: 0.12, green: 0.12, blue: 0.14), Color(red: 0.05, green: 0.06, blue: 0.07), Color(red: 0.01, green: 0.01, blue: 0.02)], description: "Charcoal depth", isSelected: selectedTheme == .obsidian, action: { selectedTheme = .obsidian })
                         ThemeCardButton(name: "Ocean", colors: [Color(red: 0.2, green: 0.4, blue: 0.35), Color(red: 0.15, green: 0.45, blue: 0.5)], description: "Calm teal and blue", isSelected: selectedTheme == .ocean, action: { selectedTheme = .ocean })
                         ThemeCardButton(name: "Sunset", colors: [Color(red: 0.95, green: 0.4, blue: 0.3), Color(red: 0.95, green: 0.65, blue: 0.3)], description: "Warm orange tones", isSelected: selectedTheme == .sunset, action: { selectedTheme = .sunset })
                         ThemeCardButton(name: "Forest", colors: [Color(red: 0.15, green: 0.35, blue: 0.2), Color(red: 0.25, green: 0.45, blue: 0.25)], description: "Natural green hues", isSelected: selectedTheme == .forest, action: { selectedTheme = .forest })
@@ -478,35 +437,26 @@ struct PersonalizationView: View {
     }
     
     private func loadPersonalization() {
-        // Parse existing system prompt if available
-        customInstructions = systemPrompt
+        let settings = PersonalizationStore().load()
+        baseStyle = settings.baseStyle
+        customInstructions = settings.customInstructions
+        occupation = settings.occupation
+        moreAboutYou = settings.moreAboutYou
+        
+        // Keep the chat pipeline's system prompt in sync.
+        systemPrompt = settings.systemPrompt()
     }
     
     private func savePersonalization() {
-        // Construct system prompt from all fields
-        var prompt = ""
+        let settings = PersonalizationSettings(
+            baseStyle: baseStyle,
+            customInstructions: customInstructions,
+            occupation: occupation,
+            moreAboutYou: moreAboutYou
+        )
         
-        if !baseStyle.rawValue.isEmpty {
-            prompt += "Style: \(baseStyle.rawValue) - \(baseStyle.description)\n\n"
-        }
-        
-        if !customInstructions.isEmpty {
-            prompt += "Instructions: \(customInstructions)\n\n"
-        }
-        
-        if !nickname.isEmpty {
-            prompt += "User's nickname: \(nickname)\n"
-        }
-        
-        if !occupation.isEmpty {
-            prompt += "User's occupation: \(occupation)\n"
-        }
-        
-        if !moreAboutYou.isEmpty {
-            prompt += "More about user: \(moreAboutYou)\n"
-        }
-        
-        systemPrompt = prompt
+        PersonalizationStore().save(settings)
+        systemPrompt = settings.systemPrompt()
         showingSaveConfirmation = true
     }
 }
@@ -655,7 +605,7 @@ struct FontStyleCardButton: View {
 }
 
 struct StylePickerSheet: View {
-    @Binding var selectedStyle: PersonalizationView.BaseStyle
+    @Binding var selectedStyle: AssistantBaseStyle
     @Binding var isPresented: Bool
     
     var body: some View {
@@ -665,7 +615,7 @@ struct StylePickerSheet: View {
                 
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(PersonalizationView.BaseStyle.allCases) { style in
+                        ForEach(AssistantBaseStyle.allCases) { style in
                             Button(action: {
                                 selectedStyle = style
                                 isPresented = false
@@ -694,7 +644,7 @@ struct StylePickerSheet: View {
                                 .contentShape(Rectangle())
                             }
                             
-                            if style != PersonalizationView.BaseStyle.allCases.last {
+                            if style != AssistantBaseStyle.allCases.last {
                                 Divider()
                                     .padding(.leading, 20)
                             }

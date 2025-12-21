@@ -16,7 +16,7 @@ struct ChatView: View {
     @State private var showKeyboardOnLaunch = true
     @State private var serverAddress = ""
     @State private var systemPrompt = ""
-    @State private var selectedTheme: AppTheme = .ocean
+    @State private var selectedTheme: AppTheme = .obsidian
     @State private var selectedFontStyle: FontStyle = .system
     @State private var selectedModel = "gpt-oss:latest"
     @State private var availableModels: [String] = ["gpt-oss:latest"]
@@ -66,10 +66,17 @@ struct ChatView: View {
     }
     
     enum AppTheme {
-        case ocean, sunset, forest, midnight, lavender, crimson, coral, arctic
+        case obsidian, ocean, sunset, forest, midnight, lavender, crimson, coral, arctic
         
         var colors: [Color] {
             switch self {
+            case .obsidian:
+                // Dark, high-contrast gradient with subtle depth (matches the logo vibe)
+                return [
+                    Color(red: 0.12, green: 0.12, blue: 0.14), // charcoal top
+                    Color(red: 0.05, green: 0.06, blue: 0.07), // deep slate mid
+                    Color(red: 0.01, green: 0.01, blue: 0.02)  // near-black bottom
+                ]
             case .ocean:
                 return [Color(red: 0.2, green: 0.4, blue: 0.35), Color(red: 0.15, green: 0.45, blue: 0.5)]
             case .sunset:
@@ -88,6 +95,35 @@ struct ChatView: View {
                 return [Color(red: 0.7, green: 0.85, blue: 0.9), Color(red: 0.8, green: 0.9, blue: 0.95)]
             }
         }
+        
+        var storageValue: String {
+            switch self {
+            case .obsidian: return "obsidian"
+            case .ocean: return "ocean"
+            case .sunset: return "sunset"
+            case .forest: return "forest"
+            case .midnight: return "midnight"
+            case .lavender: return "lavender"
+            case .crimson: return "crimson"
+            case .coral: return "coral"
+            case .arctic: return "arctic"
+            }
+        }
+        
+        init?(storageValue: String) {
+            switch storageValue {
+            case "obsidian": self = .obsidian
+            case "ocean": self = .ocean
+            case "sunset": self = .sunset
+            case "forest": self = .forest
+            case "midnight": self = .midnight
+            case "lavender": self = .lavender
+            case "crimson": self = .crimson
+            case "coral": self = .coral
+            case "arctic": self = .arctic
+            default: return nil
+            }
+        }
     }
     
     enum FontStyle {
@@ -103,6 +139,25 @@ struct ChatView: View {
                 return .system(size: size, weight: weight, design: .serif)
             case .monospaced:
                 return .system(size: size, weight: weight, design: .monospaced)
+            }
+        }
+        
+        var storageValue: String {
+            switch self {
+            case .system: return "system"
+            case .rounded: return "rounded"
+            case .serif: return "serif"
+            case .monospaced: return "monospaced"
+            }
+        }
+        
+        init?(storageValue: String) {
+            switch storageValue {
+            case "system": self = .system
+            case "rounded": self = .rounded
+            case "serif": self = .serif
+            case "monospaced": self = .monospaced
+            default: return nil
             }
         }
     }
@@ -126,110 +181,42 @@ struct ChatView: View {
                     
                     VStack(spacing: 0) {
                         // Top Bar
-                        ZStack {
-                            HStack {
-                                // Combined Settings/History Button - Left
-                                HStack(spacing: 16) {
-                                    Button(action: { 
-                                        sidePanelView = .settings
-                                        showSidePanel = true
-                                    }) {
-                                        Image(systemName: "gearshape")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
-                                    }
-                                    
-                                    Button(action: { 
-                                        sidePanelView = .chatHistory
-                                        showSidePanel = true
-                                    }) {
-                                        Image(systemName: "message")
-                                            .font(.title3)
-                                            .foregroundColor(.white)
-                                    }
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(Color.white.opacity(0.15))
-                                .cornerRadius(25)
-                                
-                                Spacer()
-                                
-                                // Apps Button - Right
+                        HStack {
+                            // Combined Settings/History Button - Left
+                            HStack(spacing: 16) {
                                 Button(action: { 
-                                    // TODO: Handle apps page
+                                    sidePanelView = .settings
+                                    showSidePanel = true
                                 }) {
-                                    Image(systemName: "square.grid.2x2")
-                                        .font(.title2)
+                                    Image(systemName: "gearshape")
+                                        .font(.title3)
                                         .foregroundColor(.white)
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
                                 }
                                 
-                                // New Chat Icon Button - Right
-                                Button(action: { conversationManager.newConversation() }) {
-                                    Image(systemName: "square.and.pencil")
-                                        .font(.title2)
+                                Button(action: { 
+                                    sidePanelView = .chatHistory
+                                    showSidePanel = true
+                                }) {
+                                    Image(systemName: "message")
+                                        .font(.title3)
                                         .foregroundColor(.white)
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
                                 }
                             }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.15))
+                            .cornerRadius(25)
                             
-                            // Model Selector - Centered (no background)
-                            Menu {
-                                ForEach(currentAvailableModels, id: \.self) { model in
-                                    Button(action: {
-                                        selectedModel = model
-                                    }) {
-                                        HStack {
-                                            Text(formatModelName(model))
-                                            if selectedModel == model {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Show reasoning effort submenu for GPT-oss models
-                                // Check the selectedModel directly instead of conversationManager
-                                if supportsReasoningEffort(for: selectedModel) {
-                                    Divider()
-                                    
-                                    Menu {
-                                        ForEach(ReasoningEffort.allCases, id: \.self) { effort in
-                                            Button(action: {
-                                                reasoningEffort = effort
-                                            }) {
-                                                HStack {
-                                                    Text(effort.displayName)
-                                                    if reasoningEffort == effort {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        HStack {
-                                            Image(systemName: "brain")
-                                            Text("Reasoning: \(reasoningEffort.displayName)")
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Text(formatModelName(selectedModel))
-                                        .font(.body)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
+                            Spacer()
+                            
+                            // New Chat Icon Button - Right
+                            Button(action: { conversationManager.newConversation() }) {
+                                Image(systemName: "square.and.pencil")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 50, height: 50)
+                                    .background(Color.white.opacity(0.15))
+                                    .clipShape(Circle())
                             }
                         }
                         .padding(.horizontal, 16)
@@ -380,6 +367,27 @@ struct ChatView: View {
                 conversationManager.serverAddress = savedAddress
             }
             
+            // Load saved keyboard behavior
+            if UserDefaults.standard.object(forKey: "showKeyboardOnLaunch") != nil {
+                showKeyboardOnLaunch = UserDefaults.standard.bool(forKey: "showKeyboardOnLaunch")
+            }
+            
+            // Load saved theme + font style
+            if let savedTheme = UserDefaults.standard.string(forKey: "selectedTheme"),
+               let theme = AppTheme(storageValue: savedTheme) {
+                selectedTheme = theme
+            }
+            if let savedFont = UserDefaults.standard.string(forKey: "selectedFontStyle"),
+               let font = FontStyle(storageValue: savedFont) {
+                selectedFontStyle = font
+            }
+            
+            // Load saved system prompt (about me / custom instructions)
+            if let savedSystemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") {
+                systemPrompt = savedSystemPrompt
+                conversationManager.systemPrompt = savedSystemPrompt
+            }
+            
             // Load saved selected model (will be validated after provider is loaded)
             if let savedModel = UserDefaults.standard.string(forKey: "selectedModel") {
                 selectedModel = savedModel
@@ -458,8 +466,18 @@ struct ChatView: View {
             UserDefaults.standard.set(newValue, forKey: "serverAddress")
             loadModelsFromServer()
         }
+        .onChange(of: showKeyboardOnLaunch) { _, newValue in
+            UserDefaults.standard.set(newValue, forKey: "showKeyboardOnLaunch")
+        }
+        .onChange(of: selectedTheme) { _, newValue in
+            UserDefaults.standard.set(newValue.storageValue, forKey: "selectedTheme")
+        }
+        .onChange(of: selectedFontStyle) { _, newValue in
+            UserDefaults.standard.set(newValue.storageValue, forKey: "selectedFontStyle")
+        }
         .onChange(of: systemPrompt) { oldValue, newValue in
             conversationManager.systemPrompt = newValue
+            UserDefaults.standard.set(newValue, forKey: "systemPrompt")
         }
         .onChange(of: selectedModel) { oldValue, newValue in
             conversationManager.selectedModel = newValue

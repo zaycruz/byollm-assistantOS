@@ -207,10 +207,7 @@ struct SettingsView: View {
                                             .padding(.vertical, 10)
                                             .background(
                                                 LinearGradient(
-                                                    colors: [
-                                                        Color(red: 0.2, green: 0.5, blue: 0.4),
-                                                        Color(red: 0.15, green: 0.45, blue: 0.5)
-                                                    ],
+                                                    colors: selectedTheme.colors,
                                                     startPoint: .leading,
                                                     endPoint: .trailing
                                                 )
@@ -356,73 +353,6 @@ struct SettingsView: View {
                             .cornerRadius(16)
                             .padding(.horizontal, 20)
                         }
-                        
-                        // About Section
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("About")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                                .padding(.horizontal, 20)
-                                .padding(.bottom, 12)
-                            
-                            VStack(spacing: 0) {
-                                SettingsRow(
-                                    icon: "doc.text",
-                                    title: "Term & Conditions",
-                                    showChevron: true
-                                )
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                SettingsRow(
-                                    icon: "lock",
-                                    title: "Privacy Policy",
-                                    showChevron: true
-                                )
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                SettingsRow(
-                                    icon: "doc.plaintext",
-                                    title: "Licenses",
-                                    showChevron: true
-                                )
-                                
-                                Divider()
-                                    .background(Color.white.opacity(0.1))
-                                    .padding(.leading, 70)
-                                
-                                HStack(spacing: 16) {
-                                    Image(systemName: "info.circle")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
-                                        .frame(width: 24)
-                                    
-                                    Text("Version 1.39.1")
-                                        .foregroundColor(.white)
-                                        .font(.body)
-                                    
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
-                            }
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(16)
-                            .padding(.horizontal, 20)
-                        }
-                        
-                        // More Section
-                        Text("More")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
                     }
                     .padding(.vertical, 20)
                 }
