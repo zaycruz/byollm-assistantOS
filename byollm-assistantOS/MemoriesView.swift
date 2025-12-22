@@ -75,17 +75,35 @@ class MemoriesStore: ObservableObject {
     @Published var errorMessage: String?
     
     private var serverAddress: String {
-        UserDefaults.standard.string(forKey: "serverAddress") ?? "http://localhost:8000"
+        var address = UserDefaults.standard.string(forKey: "serverAddress")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        
+        // Return empty if not configured
+        guard !address.isEmpty else { return "" }
+        
+        // Add http:// prefix if missing
+        if !address.hasPrefix("http://") && !address.hasPrefix("https://") {
+            address = "http://\(address)"
+        }
+        
+        return address
     }
     
     // MARK: - List Memories
     func fetchMemories() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
         
+        guard !serverAddress.isEmpty else {
+            await MainActor.run {
+                errorMessage = "Server not configured. Please set your server address in Settings."
+                isLoading = false
+            }
+            return
+        }
+        
         let urlString = "\(serverAddress)/v1/memory/semantic?sort_by=recent&limit=100&offset=0"
         guard let url = URL(string: urlString) else {
             await MainActor.run { 
-                errorMessage = "Invalid URL"
+                errorMessage = "Invalid server URL"
                 isLoading = false 
             }
             return
@@ -136,10 +154,18 @@ class MemoriesStore: ObservableObject {
         
         await MainActor.run { isLoading = true; errorMessage = nil }
         
+        guard !serverAddress.isEmpty else {
+            await MainActor.run {
+                errorMessage = "Server not configured"
+                isLoading = false
+            }
+            return
+        }
+        
         let urlString = "\(serverAddress)/v1/memory/search"
         guard let url = URL(string: urlString) else {
             await MainActor.run { 
-                errorMessage = "Invalid URL"
+                errorMessage = "Invalid server URL"
                 isLoading = false 
             }
             return
@@ -183,6 +209,8 @@ class MemoriesStore: ObservableObject {
     
     // MARK: - Delete Memory
     func deleteMemory(id: Int) async -> Bool {
+        guard !serverAddress.isEmpty else { return false }
+        
         let urlString = "\(serverAddress)/v1/memory/semantic/\(id)"
         guard let url = URL(string: urlString) else { return false }
         
