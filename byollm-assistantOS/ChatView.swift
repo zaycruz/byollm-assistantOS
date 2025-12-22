@@ -342,6 +342,20 @@ struct ChatView: View {
                         isInputFocused = false
                     }
                     
+                    // Subtle background glow to enhance glass refraction
+                    VStack {
+                        Spacer()
+                        RadialGradient(
+                            colors: [Color.white.opacity(0.05), Color.clear],
+                            center: .bottom,
+                            startRadius: 0,
+                            endRadius: 400
+                        )
+                        .frame(height: 300)
+                        .ignoresSafeArea()
+                    }
+                    .allowsHitTesting(false)
+                    
                     VStack(spacing: 0) {
                         topBar
                         messagesContent
@@ -446,7 +460,7 @@ struct ChatView: View {
     
     private var chatInputArea: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 // Text Input Area (Top)
                 HStack(alignment: .bottom, spacing: 12) {
                     ZStack(alignment: .topLeading) {
@@ -479,42 +493,62 @@ struct ChatView: View {
                     
                     if !inputText.isEmpty || conversationManager.isLoading {
                         inputActionButton
-                            .padding(.bottom, 4)
+                            .padding(.bottom, 2)
                     }
                 }
-                
-                // Divider or spacing
-                Spacer()
-                    .frame(height: 4)
                 
                 // Bottom Buttons Row
                 HStack(spacing: 20) {
                     Button(action: {}) {
                         Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(.system(size: 20, weight: .regular))
+                            .foregroundColor(.white.opacity(0.6))
                     }
                     
                     Spacer()
                     
                     HStack(spacing: 22) {
                         Image(systemName: "mic")
-                            .font(.system(size: 19, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(.system(size: 19, weight: .regular))
+                            .foregroundColor(.white.opacity(0.6))
                         
                         microphoneButton
                     }
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, 2)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 18)
             .padding(.vertical, 14)
-            .background(.ultraThinMaterial)
+            .background {
+                ZStack {
+                    // This adds the "liquid" lift - a subtle white glow inside the material
+                    RoundedRectangle(cornerRadius: 32)
+                        .fill(Color.white.opacity(0.05))
+                    
+                    // The main blur
+                    RoundedRectangle(cornerRadius: 32)
+                        .fill(.ultraThinMaterial)
+                }
+            }
             .cornerRadius(32)
             .overlay(
                 RoundedRectangle(cornerRadius: 32)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.25),
+                                .white.opacity(0.05),
+                                .clear,
+                                .white.opacity(0.05),
+                                .white.opacity(0.15)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             )
+            .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 10)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
