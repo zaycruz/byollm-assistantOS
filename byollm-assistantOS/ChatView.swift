@@ -813,11 +813,14 @@ struct ChatView: View {
         
         // If this was a voice message, speak the response when ready
         if shouldSpeakNextResponse {
+            print("[Voice] shouldSpeakNextResponse is true, waiting for LLM...")
             Task {
                 // Wait for response to complete
                 while conversationManager.isLoading {
                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
                 }
+                
+                print("[Voice] LLM finished, checking for response...")
                 
                 await MainActor.run {
                     shouldSpeakNextResponse = false
@@ -828,8 +831,10 @@ struct ChatView: View {
                 if let lastMessage = conversationManager.currentConversation.messages.last,
                    !lastMessage.isUser,
                    !lastMessage.content.isEmpty {
+                    print("[Voice] Speaking AI response: \(lastMessage.content.prefix(50))...")
                     await voiceService.speak(text: lastMessage.content)
                 } else {
+                    print("[Voice] No AI message to speak")
                     // No message to speak, resume listening directly
                     await MainActor.run {
                         resumeListeningAfterResponse()

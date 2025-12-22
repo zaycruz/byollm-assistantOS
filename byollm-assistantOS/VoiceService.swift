@@ -113,7 +113,12 @@ class VoiceService: ObservableObject {
     // MARK: - Status Check
     
     func checkStatus() async {
-        guard let url = baseURL?.appendingPathComponent("/v1/audio/status") else { return }
+        guard let url = baseURL?.appendingPathComponent("/v1/audio/status") else { 
+            print("[Voice] No base URL for status check")
+            return 
+        }
+        
+        print("[Voice] Checking status at: \(url)")
         
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
@@ -122,12 +127,15 @@ class VoiceService: ObservableObject {
             await MainActor.run {
                 self.isSTTAvailable = status.stt?.enabled ?? false
                 self.isTTSAvailable = status.tts?.enabled ?? false
+                print("[Voice] Status - STT: \(self.isSTTAvailable), TTS: \(self.isTTSAvailable)")
             }
         } catch {
-            print("Failed to check voice status: \(error)")
+            print("[Voice] Failed to check status: \(error)")
+            // Assume services are available if we can't check (server might not have status endpoint)
             await MainActor.run {
-                self.isSTTAvailable = false
-                self.isTTSAvailable = false
+                self.isSTTAvailable = true
+                self.isTTSAvailable = true
+                print("[Voice] Assuming services available (status check failed)")
             }
         }
     }
@@ -217,21 +225,30 @@ class VoiceService: ObservableObject {
     
     func speak(text: String, completion: (() -> Void)? = nil) async {
         guard !text.isEmpty else { 
+            print("[TTS] Empty text, skipping")
             completion?()
             return 
         }
         
+        print("[TTS] Speaking: \(text.prefix(50))...")
+        print("[TTS] Server URL: \(baseURL?.absoluteString ?? "nil")")
+        print("[TTS] TTS Available: \(isTTSAvailable)")
+        
         await MainActor.run { isSpeaking = true }
         
         do {
+            print("[TTS] Requesting synthesis...")
             let audioData = try await synthesize(text: text)
+            print("[TTS] Got audio data: \(audioData.count) bytes")
             try await playAudio(data: audioData)
+            print("[TTS] Playback complete")
         } catch {
-            print("TTS error: \(error)")
+            print("[TTS] Error: \(error)")
         }
         
         await MainActor.run { 
             isSpeaking = false
+            print("[TTS] Calling onSpeakingFinished callback")
             onSpeakingFinished?()
         }
         completion?()
