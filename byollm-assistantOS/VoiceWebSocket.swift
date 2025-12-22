@@ -304,10 +304,12 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     }
     
     private func stopPlayback() {
+        // Stop all audio
         playerNode.stop()
         if playbackEngine.isRunning {
             playbackEngine.stop()
         }
+        print("[WS] Playback engine stopped")
     }
     
     /// Play streaming PCM16 chunk (24kHz mono)
@@ -496,6 +498,15 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             print("[WS] Turn complete")
             onResponseComplete?()
             
+        case "interrupted":
+            print("[WS] Interrupted - stopping audio immediately")
+            isProcessing = false
+            isSpeaking = false
+            status = "Interrupted"
+            
+            // CRITICAL: Immediately stop all queued audio
+            stopAllPlayback()
+            
         case "error", "tts_error", "llm_error", "stt_error":
             if let errorMsg = event["error"] as? String {
                 status = "Error: \(errorMsg)"
@@ -503,10 +514,25 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             }
             isProcessing = false
             isSpeaking = false
+            stopAllPlayback()
             onResponseComplete?()
             
         default:
             print("[WS] Unknown event: \(type)")
         }
+    }
+    
+    // MARK: - Interruption Handling
+    
+    private func stopAllPlayback() {
+        // Stop the player node - this immediately halts all scheduled buffers
+        playerNode.stop()
+        
+        // Restart the player for next response
+        if playbackEngine.isRunning {
+            playerNode.play()
+        }
+        
+        print("[WS] Audio playback stopped")
     }
 }
