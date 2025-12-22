@@ -445,35 +445,26 @@ struct ChatView: View {
     }
     
     private var chatInputArea: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .bottom, spacing: 12) {
-                Button(action: {}) {
-                    Image(systemName: "plus")
-                        .font(.title2)
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                }
-                
-                HStack(alignment: .bottom, spacing: 8) {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                // Text Input Area (Top)
+                HStack(alignment: .bottom, spacing: 12) {
                     ZStack(alignment: .topLeading) {
                         if inputText.isEmpty {
                             Text("Ask anything")
-                                .foregroundColor(.white.opacity(0.5))
+                                .font(.system(size: 17))
+                                .foregroundColor(.white.opacity(0.4))
                                 .padding(.horizontal, 4)
                                 .padding(.top, 8)
                         }
                         
                         TextEditor(text: $inputText)
+                            .font(.system(size: 17))
                             .foregroundColor(.white)
                             .focused($isInputFocused)
                             .scrollContentBackground(.hidden)
                             .background(Color.clear)
+                            .frame(minHeight: 36, maxHeight: 150)
                             .frame(height: inputTextHeight)
                             .padding(.horizontal, -4)
                             .padding(.vertical, -8)
@@ -485,45 +476,67 @@ struct ChatView: View {
                                 updateInputHeight(for: newValue)
                             }
                     }
-                    .frame(height: inputTextHeight)
                     
-                    // Action button (send or stop)
-                    inputActionButton
+                    if !inputText.isEmpty || conversationManager.isLoading {
+                        inputActionButton
+                            .padding(.bottom, 4)
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial)
-                .cornerRadius(25)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 25)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
                 
-                microphoneButton
+                // Divider or spacing
+                Spacer()
+                    .frame(height: 4)
+                
+                // Bottom Buttons Row
+                HStack(spacing: 20) {
+                    Button(action: {}) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 22) {
+                        Image(systemName: "mic")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                        
+                        microphoneButton
+                    }
+                }
+                .padding(.bottom, 4)
             }
             .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial)
+            .cornerRadius(32)
+            .overlay(
+                RoundedRectangle(cornerRadius: 32)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
     }
-    
+
     @ViewBuilder
     private var inputActionButton: some View {
         if conversationManager.isLoading {
             Button(action: { conversationManager.stopGenerating() }) {
                 Image(systemName: "stop.circle.fill")
-                    .font(.title2)
+                    .font(.system(size: 28))
                     .foregroundColor(.red)
             }
-            .padding(.bottom, 4)
-        } else if !inputText.isEmpty || speechRecognizer.isRecording {
+        } else if !inputText.isEmpty {
             Button(action: { sendMessage() }) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
+                    .font(.system(size: 28))
                     .foregroundColor(.white)
             }
-            .padding(.bottom, 4)
         }
     }
-    
+
     @ViewBuilder
     private var microphoneButton: some View {
         Button(action: {
@@ -537,20 +550,20 @@ struct ChatView: View {
             }
         }) {
             Image(systemName: "waveform")
-                .font(.title2)
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(speechRecognizer.isRecording ? .red : .white)
                 .frame(width: 44, height: 44)
                 .background {
                     if speechRecognizer.isRecording {
                         Color.red.opacity(0.3)
                     } else {
-                        Rectangle().fill(.ultraThinMaterial)
+                        Circle().fill(Color.white.opacity(0.15))
                     }
                 }
                 .clipShape(Circle())
                 .overlay(
                     Circle()
-                        .stroke(speechRecognizer.isRecording ? Color.red.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 1)
+                        .stroke(speechRecognizer.isRecording ? Color.red.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
                 )
         }
     }
@@ -728,18 +741,18 @@ struct MessagesListView: View {
                     }
                 }) {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
-                        .frame(width: 36, height: 36)
-                        .background(.ultraThinMaterial)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(width: 42, height: 42)
+                        .background(Color.black.opacity(0.6))
                         .clipShape(Circle())
                         .overlay(
                             Circle()
                                 .stroke(Color.white.opacity(0.2), lineWidth: 1)
                         )
-                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 20)
                 .transition(.scale.combined(with: .opacity))
             }
         }
