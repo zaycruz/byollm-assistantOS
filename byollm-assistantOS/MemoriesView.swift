@@ -7,79 +7,211 @@
 
 import SwiftUI
 
+// MARK: - API Response Models
 struct Memory: Identifiable, Codable {
-    let id: UUID
-    var content: String
-    var createdAt: Date
-    var isEnabled: Bool
+    let id: Int
+    let content: String
+    let confidence: Double?
+    let accessCount: Int?
+    let importanceScore: Double?
+    let createdAt: String
+    let tags: [String]?
     
-    init(id: UUID = UUID(), content: String, createdAt: Date = Date(), isEnabled: Bool = true) {
-        self.id = id
-        self.content = content
-        self.createdAt = createdAt
-        self.isEnabled = isEnabled
+    enum CodingKeys: String, CodingKey {
+        case id, content, confidence, tags
+        case accessCount = "access_count"
+        case importanceScore = "importance_score"
+        case createdAt = "created_at"
     }
 }
 
+struct MemoriesListResponse: Codable {
+    let memories: [Memory]
+    let limit: Int
+    let offset: Int
+    let sortBy: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case memories, limit, offset
+        case sortBy = "sort_by"
+    }
+}
+
+struct MemorySearchResult: Codable {
+    let id: Int
+    let content: String
+    let relevanceScore: Double?
+    let confidence: Double?
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, content, confidence
+        case relevanceScore = "relevance_score"
+        case createdAt = "created_at"
+    }
+}
+
+struct MemorySearchResponse: Codable {
+    let results: [MemorySearchResult]
+    let query: String
+    let total: Int
+}
+
+struct MemoryDeleteResponse: Codable {
+    let status: String
+    let memoryId: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case status
+        case memoryId = "memory_id"
+    }
+}
+
+// MARK: - Memories Store
 class MemoriesStore: ObservableObject {
     @Published var memories: [Memory] = []
+    @Published var searchResults: [MemorySearchResult] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
     
-    private let key = "userMemories"
-    
-    init() {
-        load()
+    private var serverAddress: String {
+        UserDefaults.standard.string(forKey: "serverAddress") ?? "http://localhost:8000"
     }
     
-    func load() {
-        if let data = UserDefaults.standard.data(forKey: key),
-           let decoded = try? JSONDecoder().decode([Memory].self, from: data) {
-            memories = decoded
+    // MARK: - List Memories
+    func fetchMemories() async {
+        await MainActor.run { isLoading = true; errorMessage = nil }
+        
+        let urlString = "\(serverAddress)/v1/memory/semantic?sort_by=recent&limit=100&offset=0"
+        guard let url = URL(string: urlString) else {
+            await MainActor.run { 
+                errorMessage = "Invalid URL"
+                isLoading = false 
+            }
+            return
+        }
+        
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                await MainActor.run { 
+                    errorMessage = "Invalid response"
+                    isLoading = false 
+                }
+                return
+            }
+            
+            if httpResponse.statusCode == 200 {
+                let decoder = JSONDecoder()
+                let listResponse = try decoder.decode(MemoriesListResponse.self, from: data)
+                await MainActor.run {
+                    self.memories = listResponse.memories
+                    self.isLoading = false
+                }
+            } else {
+                await MainActor.run {
+                    errorMessage = "Server error: \(httpResponse.statusCode)"
+                    isLoading = false
+                }
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to fetch memories: \(error.localizedDescription)"
+                isLoading = false
+            }
         }
     }
     
-    func save() {
-        if let encoded = try? JSONEncoder().encode(memories) {
-            UserDefaults.standard.set(encoded, forKey: key)
+    // MARK: - Search Memories
+    func searchMemories(query: String) async {
+        guard !query.isEmpty else {
+            await fetchMemories()
+            return
+        }
+        
+        await MainActor.run { isLoading = true; errorMessage = nil }
+        
+        let urlString = "\(serverAddress)/v1/memory/search"
+        guard let url = URL(string: urlString) else {
+            await MainActor.run { 
+                errorMessage = "Invalid URL"
+                isLoading = false 
+            }
+            return
+        }
+        
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let body: [String: Any] = [
+                "query": query,
+                "limit": 20,
+                "semantic_only": true
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                await MainActor.run { 
+                    errorMessage = "Search failed"
+                    isLoading = false 
+                }
+                return
+            }
+            
+            let decoder = JSONDecoder()
+            let searchResponse = try decoder.decode(MemorySearchResponse.self, from: data)
+            await MainActor.run {
+                self.searchResults = searchResponse.results
+                self.isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Search error: \(error.localizedDescription)"
+                isLoading = false
+            }
         }
     }
     
-    func add(_ content: String) {
-        let memory = Memory(content: content)
-        memories.insert(memory, at: 0)
-        save()
-    }
-    
-    func delete(at offsets: IndexSet) {
-        memories.remove(atOffsets: offsets)
-        save()
-    }
-    
-    func delete(_ memory: Memory) {
-        memories.removeAll { $0.id == memory.id }
-        save()
-    }
-    
-    func deleteAll() {
-        memories.removeAll()
-        save()
-    }
-    
-    func toggle(_ memory: Memory) {
-        if let index = memories.firstIndex(where: { $0.id == memory.id }) {
-            memories[index].isEnabled.toggle()
-            save()
+    // MARK: - Delete Memory
+    func deleteMemory(id: Int) async -> Bool {
+        let urlString = "\(serverAddress)/v1/memory/semantic/\(id)"
+        guard let url = URL(string: urlString) else { return false }
+        
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            
+            let (_, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return false
+            }
+            
+            // Remove from local list
+            await MainActor.run {
+                self.memories.removeAll { $0.id == id }
+                self.searchResults.removeAll { $0.id == id }
+            }
+            return true
+        } catch {
+            return false
         }
     }
     
-    func enabledMemories() -> [Memory] {
-        memories.filter { $0.isEnabled }
-    }
-    
-    func search(_ query: String) -> [Memory] {
-        if query.isEmpty {
-            return memories
+    // MARK: - Delete All
+    func deleteAll() async {
+        for memory in memories {
+            _ = await deleteMemory(id: memory.id)
         }
-        return memories.filter { $0.content.localizedCaseInsensitiveContains(query) }
     }
 }
 
@@ -87,12 +219,25 @@ struct MemoriesView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var store = MemoriesStore()
     @State private var searchText = ""
-    @State private var showingAddMemory = false
-    @State private var showingMenu = false
     @State private var showingDeleteAllConfirm = false
+    @State private var searchTask: Task<Void, Never>?
     
-    var filteredMemories: [Memory] {
-        store.search(searchText)
+    var displayMemories: [Memory] {
+        if !searchText.isEmpty && !store.searchResults.isEmpty {
+            // Convert search results to Memory format for display
+            return store.searchResults.map { result in
+                Memory(
+                    id: result.id,
+                    content: result.content,
+                    confidence: result.confidence,
+                    accessCount: nil,
+                    importanceScore: nil,
+                    createdAt: result.createdAt,
+                    tags: nil
+                )
+            }
+        }
+        return store.memories
     }
     
     var body: some View {
@@ -121,8 +266,8 @@ struct MemoriesView: View {
                     Spacer()
                     
                     Menu {
-                        Button(action: { showingAddMemory = true }) {
-                            Label("Add Memory", systemImage: "plus")
+                        Button(action: { Task { await store.fetchMemories() } }) {
+                            Label("Refresh", systemImage: "arrow.clockwise")
                         }
                         Button(role: .destructive, action: { showingDeleteAllConfirm = true }) {
                             Label("Delete All", systemImage: "trash")
@@ -140,7 +285,37 @@ struct MemoriesView: View {
                 .padding(.top, 60)
                 .padding(.bottom, 16)
                 
-                if store.memories.isEmpty {
+                if store.isLoading {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.2)
+                    Spacer()
+                } else if let error = store.errorMessage {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 48))
+                            .foregroundColor(.orange.opacity(0.7))
+                        
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        
+                        Button(action: { Task { await store.fetchMemories() } }) {
+                            Text("Try Again")
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(20)
+                        }
+                    }
+                    Spacer()
+                } else if displayMemories.isEmpty {
                     Spacer()
                     
                     VStack(spacing: 12) {
@@ -148,18 +323,16 @@ struct MemoriesView: View {
                             .font(.system(size: 48))
                             .foregroundColor(.white.opacity(0.3))
                         
-                        Text("No memories yet")
+                        Text(searchText.isEmpty ? "No memories yet" : "No results found")
                             .font(.headline)
                             .foregroundColor(.white.opacity(0.5))
                         
-                        Button(action: { showingAddMemory = true }) {
-                            Text("Add your first memory")
+                        if searchText.isEmpty {
+                            Text("Memories are created automatically from your conversations")
                                 .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.6))
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 10)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(20)
+                                .foregroundColor(.white.opacity(0.3))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
                         }
                     }
                     
@@ -170,10 +343,10 @@ struct MemoriesView: View {
                         VStack(spacing: 0) {
                             // Memory cards in a container
                             VStack(spacing: 0) {
-                                ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
+                                ForEach(Array(displayMemories.enumerated()), id: \.element.id) { index, memory in
                                     MemoryCard(memory: memory, store: store)
                                     
-                                    if index < filteredMemories.count - 1 {
+                                    if index < displayMemories.count - 1 {
                                         Divider()
                                             .background(Color.white.opacity(0.1))
                                             .padding(.horizontal, 16)
@@ -186,36 +359,56 @@ struct MemoriesView: View {
                         }
                         .padding(.bottom, 100)
                     }
-                    
-                    Spacer(minLength: 0)
-                    
-                    // Search bar at bottom
-                    HStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.white.opacity(0.4))
-                        
-                        TextField("Search", text: $searchText)
-                            .foregroundColor(.white)
-                            .placeholder(when: searchText.isEmpty) {
-                                Text("Search")
-                                    .foregroundColor(.white.opacity(0.4))
-                            }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 40)
                 }
+                
+                Spacer(minLength: 0)
+                
+                // Search bar at bottom
+                HStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.white.opacity(0.4))
+                    
+                    TextField("Search", text: $searchText)
+                        .foregroundColor(.white)
+                        .placeholder(when: searchText.isEmpty) {
+                            Text("Search")
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+                        .onChange(of: searchText) { _, newValue in
+                            // Debounce search
+                            searchTask?.cancel()
+                            searchTask = Task {
+                                try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+                                if !Task.isCancelled {
+                                    await store.searchMemories(query: newValue)
+                                }
+                            }
+                        }
+                    
+                    if !searchText.isEmpty {
+                        Button(action: { 
+                            searchText = ""
+                            Task { await store.fetchMemories() }
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(12)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 40)
             }
         }
-        .sheet(isPresented: $showingAddMemory) {
-            AddMemorySheet(store: store)
+        .onAppear {
+            Task { await store.fetchMemories() }
         }
         .confirmationDialog("Delete All Memories", isPresented: $showingDeleteAllConfirm) {
             Button("Delete All", role: .destructive) {
-                store.deleteAll()
+                Task { await store.deleteAll() }
             }
             Button("Cancel", role: .cancel) { }
         } message: {
@@ -239,90 +432,18 @@ struct MemoryCard: View {
             .padding(.vertical, 16)
             .contentShape(Rectangle())
             .contextMenu {
-                Button(role: .destructive, action: { store.delete(memory) }) {
+                Button(role: .destructive, action: { 
+                    Task { await store.deleteMemory(id: memory.id) }
+                }) {
                     Label("Delete", systemImage: "trash")
                 }
             }
-    }
-}
-
-struct AddMemorySheet: View {
-    @Environment(\.dismiss) var dismiss
-    @ObservedObject var store: MemoriesStore
-    @State private var memoryText = ""
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        NavigationView {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                
-                VStack(spacing: 20) {
-                    Text("Add a memory that the AI should remember about you.")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                    
-                    ZStack(alignment: .topLeading) {
-                        if memoryText.isEmpty {
-                            Text("e.g., I prefer concise responses...")
-                                .foregroundColor(.white.opacity(0.3))
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                        }
-                        
-                        TextEditor(text: $memoryText)
-                            .foregroundColor(.white)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 120)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .focused($isFocused)
-                    }
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 16)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        if !memoryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            store.add(memoryText.trimmingCharacters(in: .whitespacesAndNewlines))
-                            dismiss()
-                        }
-                    }) {
-                        Text("Save Memory")
-                            .font(.body)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(memoryText.isEmpty ? Color.white.opacity(0.3) : Color.white)
-                            .cornerRadius(12)
-                    }
-                    .disabled(memoryText.isEmpty)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 40)
+            .confirmationDialog("Delete Memory", isPresented: $showingDeleteConfirm) {
+                Button("Delete", role: .destructive) {
+                    Task { await store.deleteMemory(id: memory.id) }
                 }
+                Button("Cancel", role: .cancel) { }
             }
-            .navigationTitle("New Memory")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(.white)
-                }
-            }
-            .toolbarBackground(Color.black, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-        }
-        .onAppear {
-            isFocused = true
-        }
     }
 }
 
