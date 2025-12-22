@@ -31,7 +31,7 @@ struct ChatView: View {
         provider == .cloud ? cloudModels : availableModels
     }
     @State private var keyboardHeight: CGFloat = 0
-    @State private var inputTextHeight: CGFloat = 36
+    @State private var inputTextHeight: CGFloat = 28
     @FocusState private var isInputFocused: Bool
     
     enum Provider: String, CaseIterable {
@@ -461,23 +461,23 @@ struct ChatView: View {
     private var chatInputArea: some View {
         VStack(spacing: 0) {
             // Main Glass Container - everything inside
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 // Text Input Area
                 ZStack(alignment: .topLeading) {
                     if inputText.isEmpty {
-                        Text("Reply to Claude")
-                            .font(.system(size: 20))
-                            .foregroundColor(.white.opacity(0.35))
-                            .padding(.top, 4)
+                        Text("Reply to LLM")
+                            .font(.system(size: 17))
+                            .foregroundColor(.white.opacity(0.4))
+                            .padding(.top, 2)
                     }
                     
                     TextEditor(text: $inputText)
-                        .font(.system(size: 20))
+                        .font(.system(size: 17))
                         .foregroundColor(.white)
                         .focused($isInputFocused)
                         .scrollContentBackground(.hidden)
                         .background(Color.clear)
-                        .frame(minHeight: 32, maxHeight: 150)
+                        .frame(minHeight: 24, maxHeight: 120)
                         .frame(height: inputTextHeight)
                         .padding(.horizontal, -5)
                         .padding(.vertical, -8)
@@ -493,11 +493,11 @@ struct ChatView: View {
                 }
                 
                 // Bottom Buttons Row
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     // Plus button
                     Button(action: {}) {
                         Image(systemName: "plus")
-                            .font(.system(size: 22, weight: .regular))
+                            .font(.system(size: 20, weight: .regular))
                             .foregroundColor(.white)
                     }
                     
@@ -508,7 +508,7 @@ struct ChatView: View {
                         inputActionButton
                     } else {
                         Image(systemName: "mic")
-                            .font(.system(size: 22, weight: .regular))
+                            .font(.system(size: 20, weight: .regular))
                             .foregroundColor(.white.opacity(0.5))
                     }
                     
@@ -516,19 +516,19 @@ struct ChatView: View {
                     microphoneButton
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 14)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
             .background(
-                RoundedRectangle(cornerRadius: 28)
+                RoundedRectangle(cornerRadius: 24)
                     .fill(Color.white.opacity(0.08))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 28)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     )
             )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
     }
 
@@ -545,16 +545,16 @@ struct ChatView: View {
             }
         }) {
             Image(systemName: "waveform")
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundColor(speechRecognizer.isRecording ? .red : .black)
-                .frame(width: 48, height: 48)
+                .frame(width: 40, height: 40)
                 .background(
                     Circle()
                         .fill(speechRecognizer.isRecording ? Color.red.opacity(0.3) : Color.white)
                 )
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
                 )
         }
     }
@@ -578,13 +578,13 @@ struct ChatView: View {
     
     private func updateInputHeight(for text: String) {
         if text.isEmpty {
-            inputTextHeight = 36
+            inputTextHeight = 28
         } else {
             let explicitLines = text.components(separatedBy: .newlines).count
-            let estimatedWrappedLines = max(1, Int(ceil(Double(text.replacingOccurrences(of: "\n", with: "").count) / 30.0)))
+            let estimatedWrappedLines = max(1, Int(ceil(Double(text.replacingOccurrences(of: "\n", with: "").count) / 35.0)))
             let totalLines = max(explicitLines, estimatedWrappedLines)
-            let estimatedHeight = CGFloat(totalLines) * 22.0 + 12.0
-            inputTextHeight = min(max(36, estimatedHeight), 120)
+            let estimatedHeight = CGFloat(totalLines) * 20.0 + 8.0
+            inputTextHeight = min(max(28, estimatedHeight), 120)
         }
     }
     
@@ -592,7 +592,7 @@ struct ChatView: View {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         conversationManager.sendMessage(inputText)
         inputText = ""
-        inputTextHeight = 36
+        inputTextHeight = 28
     }
     
     private func formatModelName(_ modelName: String) -> String {
