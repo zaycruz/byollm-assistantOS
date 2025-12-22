@@ -783,22 +783,18 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
-            
-            VStack(spacing: 16) {
-                Text("Meet AssistantOS")
-                    .font(fontStyle.apply(size: 34, weight: .bold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
+
+            VStack(spacing: 8) {
+                Text("BYOLLM")
+                    .font(fontStyle.apply(size: 15, weight: .medium))
+                    .foregroundColor(.white.opacity(0.4))
+                    .tracking(2)
                 
-                Text("BYOLLM - Bring Your Own LLM. Host your own large language models and interact with them seamlessly from your mobile device. Take control of your AI assistant with complete privacy and flexibility.")
+                Text("Bring Your Own LLM")
                     .font(fontStyle.apply(size: 17, weight: .regular))
-                    .foregroundColor(.white.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .padding(.horizontal, 32)
+                    .foregroundColor(.white.opacity(0.5))
             }
-            .padding(.horizontal, 20)
-            
+
             Spacer()
         }
     }
