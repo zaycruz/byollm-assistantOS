@@ -626,45 +626,105 @@ struct MessagesListView: View {
     let fontStyle: ChatView.FontStyle
     let isLoading: Bool
     @FocusState.Binding var isInputFocused: Bool
+    @State private var showScrollToBottom = false
+    @State private var scrollProxy: ScrollViewProxy?
     
     var body: some View {
-        ScrollView {
-            ScrollViewReader { proxy in
-                VStack(spacing: 20) {
-                    ForEach(messages) { message in
-                        MessageBubble(message: message, fontStyle: fontStyle)
-                            .id(message.id)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                ScrollViewReader { proxy in
+                    VStack(spacing: 20) {
+                        ForEach(messages) { message in
+                            MessageBubble(message: message, fontStyle: fontStyle)
+                                .id(message.id)
+                        }
+                        
+                        // Show "Thinking..." text when loading and last message is empty
+                        if isLoading && (messages.last?.content.isEmpty ?? true) {
+                            ThinkingIndicator(fontStyle: fontStyle)
+                                .id("thinking-indicator")
+                        }
+                        
+                        // Bottom anchor for scroll detection
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottom-anchor")
                     }
-                    
-                    // Show "Thinking..." text when loading and last message is empty
-                    if isLoading && (messages.last?.content.isEmpty ?? true) {
-                        ThinkingIndicator(fontStyle: fontStyle)
-                            .id("thinking-indicator")
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 20)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isInputFocused = false
                     }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // Dismiss keyboard when tapping on messages
-                    isInputFocused = false
-                }
-                .onChange(of: messages.count) { oldValue, newValue in
-                    if let lastMessage = messages.last {
-                        withAnimation {
+                    .onAppear {
+                        scrollProxy = proxy
+                        // Scroll to bottom on initial load
+                        if let lastMessage = messages.last {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
                         }
                     }
-                }
-                .onChange(of: isLoading) { oldValue, newValue in
-                    if newValue {
-                        withAnimation {
-                            proxy.scrollTo("thinking-indicator", anchor: .bottom)
+                    .onChange(of: messages.count) { oldValue, newValue in
+                        if let lastMessage = messages.last {
+                            withAnimation {
+                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            }
                         }
                     }
+                    .onChange(of: isLoading) { oldValue, newValue in
+                        if newValue {
+                            withAnimation {
+                                proxy.scrollTo("thinking-indicator", anchor: .bottom)
+                            }
+                        }
+                    }
+                    .background(
+                        GeometryReader { geometry in
+                            Color.clear.preference(
+                                key: ScrollOffsetPreferenceKey.self,
+                                value: geometry.frame(in: .named("scroll")).minY
+                            )
+                        }
+                    )
                 }
             }
+            .coordinateSpace(name: "scroll")
+            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
+                // Show button when scrolled up more than 200 points from top
+                // (negative offset means content is scrolled up)
+                let threshold: CGFloat = -200
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showScrollToBottom = offset < threshold
+                }
+            }
+            
+            // Scroll to bottom button
+            if showScrollToBottom {
+                Button(action: {
+                    if let lastMessage = messages.last {
+                        withAnimation {
+                            scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
+                    }
+                }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Color.white.opacity(0.2))
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                }
+                .padding(.bottom, 16)
+                .transition(.scale.combined(with: .opacity))
+            }
         }
+    }
+}
+
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
