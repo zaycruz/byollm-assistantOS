@@ -452,8 +452,12 @@ struct ChatView: View {
                         .font(.title2)
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(0.15))
+                        .background(.ultraThinMaterial)
                         .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
                 }
                 
                 HStack(alignment: .bottom, spacing: 8) {
@@ -488,8 +492,12 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color.white.opacity(0.15))
+                .background(.ultraThinMaterial)
                 .cornerRadius(25)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 25)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
                 
                 microphoneButton
             }
@@ -516,6 +524,7 @@ struct ChatView: View {
         }
     }
     
+    @ViewBuilder
     private var microphoneButton: some View {
         Button(action: {
             if speechRecognizer.isRecording {
@@ -531,8 +540,18 @@ struct ChatView: View {
                 .font(.title2)
                 .foregroundColor(speechRecognizer.isRecording ? .red : .white)
                 .frame(width: 44, height: 44)
-                .background(speechRecognizer.isRecording ? Color.red.opacity(0.3) : Color.white.opacity(0.15))
+                .background {
+                    if speechRecognizer.isRecording {
+                        Color.red.opacity(0.3)
+                    } else {
+                        Rectangle().fill(.ultraThinMaterial)
+                    }
+                }
                 .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(speechRecognizer.isRecording ? Color.red.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 1)
+                )
         }
     }
     
@@ -626,14 +645,15 @@ struct MessagesListView: View {
     let fontStyle: ChatView.FontStyle
     let isLoading: Bool
     @FocusState.Binding var isInputFocused: Bool
-    @State private var showScrollToBottom = false
+    @State private var showScrollToBottom = true  // Show by default for continuing conversations
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var isNearBottom = true
     
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 ScrollViewReader { proxy in
-                    VStack(spacing: 20) {
+                    LazyVStack(spacing: 20) {
                         ForEach(messages) { message in
                             MessageBubble(message: message, fontStyle: fontStyle)
                                 .id(message.id)
@@ -646,9 +666,13 @@ struct MessagesListView: View {
                         }
                         
                         // Bottom anchor for scroll detection
-                        Color.clear
-                            .frame(height: 1)
-                            .id("bottom-anchor")
+                        GeometryReader { geo in
+                            Color.clear
+                                .preference(key: BottomVisiblePreferenceKey.self, 
+                                           value: geo.frame(in: .global).minY)
+                        }
+                        .frame(height: 1)
+                        .id("bottom-anchor")
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 20)
@@ -659,8 +683,10 @@ struct MessagesListView: View {
                     .onAppear {
                         scrollProxy = proxy
                         // Scroll to bottom on initial load
-                        if let lastMessage = messages.last {
-                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            if let lastMessage = messages.last {
+                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            }
                         }
                     }
                     .onChange(of: messages.count) { oldValue, newValue in
@@ -668,6 +694,7 @@ struct MessagesListView: View {
                             withAnimation {
                                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
                             }
+                            isNearBottom = true
                         }
                     }
                     .onChange(of: isLoading) { oldValue, newValue in
@@ -677,51 +704,49 @@ struct MessagesListView: View {
                             }
                         }
                     }
-                    .background(
-                        GeometryReader { geometry in
-                            Color.clear.preference(
-                                key: ScrollOffsetPreferenceKey.self,
-                                value: geometry.frame(in: .named("scroll")).minY
-                            )
-                        }
-                    )
                 }
             }
-            .coordinateSpace(name: "scroll")
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
-                // Show button when scrolled up more than 200 points from top
-                // (negative offset means content is scrolled up)
-                let threshold: CGFloat = -200
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showScrollToBottom = offset < threshold
+            .onPreferenceChange(BottomVisiblePreferenceKey.self) { bottomY in
+                // Get screen height and check if bottom anchor is visible
+                let screenHeight = UIScreen.main.bounds.height
+                let newIsNearBottom = bottomY < screenHeight + 100
+                if newIsNearBottom != isNearBottom {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isNearBottom = newIsNearBottom
+                    }
                 }
             }
             
-            // Scroll to bottom button
-            if showScrollToBottom {
+            // Scroll to bottom button - show when not near bottom and have messages
+            if !isNearBottom && messages.count > 2 {
                 Button(action: {
                     if let lastMessage = messages.last {
-                        withAnimation {
+                        withAnimation(.easeInOut(duration: 0.3)) {
                             scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
                         }
+                        isNearBottom = true
                     }
                 }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.2))
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.9))
+                        .frame(width: 36, height: 36)
+                        .background(.ultraThinMaterial)
                         .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 8)
                 .transition(.scale.combined(with: .opacity))
             }
         }
     }
 }
 
-struct ScrollOffsetPreferenceKey: PreferenceKey {
+struct BottomVisiblePreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
