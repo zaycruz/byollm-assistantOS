@@ -36,6 +36,8 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     
     // Callbacks
     var onResponseComplete: (() -> Void)?
+    var onTranscript: ((String) -> Void)?
+    var onAIResponse: ((String) -> Void)?
     
     // MARK: - Init
     
@@ -435,6 +437,8 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             if let text = event["text"] as? String {
                 transcribedText = text
                 print("[WS] Transcript: \(text)")
+                // Notify callback to add to chat
+                onTranscript?(text)
             }
             
         case "transcript_empty":
@@ -457,6 +461,8 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             if let text = event["text"] as? String {
                 responseText = text
                 print("[WS] Response complete: \(text.prefix(50))...")
+                // Notify callback to add to chat
+                onAIResponse?(text)
             }
             
         case "synthesizing":

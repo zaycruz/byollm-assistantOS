@@ -696,6 +696,16 @@ struct ChatView: View {
             resumeListeningAfterResponse()
         }
         
+        // Set up callback for when transcript is received (add to chat)
+        voiceWebSocket.onTranscript = { text in
+            addVoiceUserMessage(text)
+        }
+        
+        // Set up callback for when AI response is complete (add to chat)
+        voiceWebSocket.onAIResponse = { text in
+            addVoiceAIMessage(text)
+        }
+        
         // Connect and start listening
         voiceWebSocket.connect()
         
@@ -709,6 +719,8 @@ struct ChatView: View {
         isVoiceModeActive = false
         shouldSpeakNextResponse = false
         voiceWebSocket.onResponseComplete = nil
+        voiceWebSocket.onTranscript = nil
+        voiceWebSocket.onAIResponse = nil
         voiceWebSocket.stopListening()
         voiceWebSocket.disconnect()
     }
@@ -731,6 +743,20 @@ struct ChatView: View {
         Task {
             await voiceService.speak(text: text)
         }
+    }
+    
+    // Add voice transcript as user message
+    private func addVoiceUserMessage(_ text: String) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let message = Message(content: text, isUser: true, timestamp: Date())
+        conversationManager.currentConversation.messages.append(message)
+    }
+    
+    // Add voice response as AI message
+    private func addVoiceAIMessage(_ text: String) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let message = Message(content: text, isUser: false, timestamp: Date())
+        conversationManager.currentConversation.messages.append(message)
     }
 
     @ViewBuilder
