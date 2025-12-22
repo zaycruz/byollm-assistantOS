@@ -255,25 +255,52 @@ class VoiceService: ObservableObject {
     }
     
     private var audioPlayerDelegate: AudioPlayerDelegateHandler?
+    private var currentPlaybackContinuation: CheckedContinuation<Void, Error>?
     var onSpeakingFinished: (() -> Void)?
     
     func playAudio(data: Data) async throws {
+        // Ensure we're on main thread and audio session is configured
+        await MainActor.run {
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default, options: [.duckOthers])
+                try session.setActive(true)
+            } catch {
+                print("[TTS] Audio session error: \(error)")
+            }
+        }
+        
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.main.async {
                 do {
+                    // Store continuation for delegate callback
+                    self.currentPlaybackContinuation = continuation
+                    
                     self.audioPlayer = try AVAudioPlayer(data: data)
+                    self.audioPlayer?.volume = 1.0
+                    
                     self.audioPlayerDelegate = AudioPlayerDelegateHandler { [weak self] in
+                        print("[TTS] Playback finished callback")
                         self?.audioPlayer = nil
                         self?.audioPlayerDelegate = nil
-                        continuation.resume()
+                        if let cont = self?.currentPlaybackContinuation {
+                            self?.currentPlaybackContinuation = nil
+                            cont.resume()
+                        }
                     }
                     self.audioPlayer?.delegate = self.audioPlayerDelegate
                     self.audioPlayer?.prepareToPlay()
                     
+                    print("[TTS] Starting playback, duration: \(self.audioPlayer?.duration ?? 0)s")
+                    
                     if self.audioPlayer?.play() != true {
+                        print("[TTS] play() returned false")
+                        self.currentPlaybackContinuation = nil
                         continuation.resume(throwing: VoiceError.audioPlaybackFailed)
                     }
                 } catch {
+                    print("[TTS] AVAudioPlayer init error: \(error)")
+                    self.currentPlaybackContinuation = nil
                     continuation.resume(throwing: VoiceError.audioPlaybackFailed)
                 }
             }
@@ -284,6 +311,10 @@ class VoiceService: ObservableObject {
         audioPlayer?.stop()
         audioPlayer = nil
         audioPlayerDelegate = nil
+        if let cont = currentPlaybackContinuation {
+            currentPlaybackContinuation = nil
+            cont.resume()
+        }
         isSpeaking = false
     }
 }
@@ -320,12 +351,12 @@ class AudioRecorder: NSObject, ObservableObject {
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
     private var levelTimer: Timer?
-    private var silenceTimer: Timer?
     
     // Silence detection settings
-    private let silenceThreshold: Float = -40.0  // dB threshold for silence
-    private let silenceDuration: TimeInterval = 1.5  // Seconds of silence before auto-stop
+    private let silenceThreshold: Float = -35.0  // dB threshold for silence (raised for better detection)
+    private let silenceDuration: TimeInterval = 1.2  // Seconds of silence before auto-stop
     private var silenceStartTime: Date?
+    private var hasDetectedSpeech = false  // Track if we've heard speech at all
     
     // Callback for when silence is detected
     var onSilenceDetected: (() -> Void)?
@@ -341,7 +372,25 @@ class AudioRecorder: NSObject, ObservableObject {
     }
     
     func startRecording() {
-        guard let url = recordingURL else { return }
+        print("[Recorder] Starting recording...")
+        
+        // Configure audio session for recording
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
+            print("[Recorder] Audio session configured")
+        } catch {
+            print("[Recorder] Audio session error: \(error)")
+        }
+        
+        guard let url = recordingURL else { 
+            print("[Recorder] No recording URL")
+            return 
+        }
+        
+        // Delete old file
+        try? FileManager.default.removeItem(at: url)
         
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
@@ -356,15 +405,21 @@ class AudioRecorder: NSObject, ObservableObject {
             audioRecorder = try AVAudioRecorder(url: url, settings: settings)
             audioRecorder?.isMeteringEnabled = true
             audioRecorder?.prepareToRecord()
-            audioRecorder?.record()
-            isRecording = true
-            detectedSilence = false
-            silenceStartTime = nil
             
-            // Start monitoring audio levels
-            startLevelMonitoring()
+            if audioRecorder?.record() == true {
+                isRecording = true
+                detectedSilence = false
+                silenceStartTime = nil
+                hasDetectedSpeech = false
+                
+                // Start monitoring audio levels
+                startLevelMonitoring()
+                print("[Recorder] Recording started successfully")
+            } else {
+                print("[Recorder] record() returned false")
+            }
         } catch {
-            print("Failed to start recording: \(error)")
+            print("[Recorder] Failed to start recording: \(error)")
         }
     }
     
@@ -385,49 +440,67 @@ class AudioRecorder: NSObject, ObservableObject {
             self.audioLevel = max(0, min(1, (level + 60) / 60))
         }
         
-        // Check for silence
+        // Log levels periodically for debugging
+        // print("[Recorder] Level: \(level) dB")
+        
+        // Check for silence (only after we've detected speech)
         if level < silenceThreshold {
-            if silenceStartTime == nil {
-                silenceStartTime = Date()
-            } else if let startTime = silenceStartTime,
-                      Date().timeIntervalSince(startTime) >= silenceDuration {
-                // Silence detected for long enough
-                DispatchQueue.main.async {
-                    self.detectedSilence = true
-                    self.onSilenceDetected?()
+            if hasDetectedSpeech {
+                if silenceStartTime == nil {
+                    silenceStartTime = Date()
+                    print("[Recorder] Silence started...")
+                } else if let startTime = silenceStartTime,
+                          Date().timeIntervalSince(startTime) >= silenceDuration {
+                    // Silence detected for long enough
+                    print("[Recorder] Silence duration reached, triggering callback")
+                    DispatchQueue.main.async {
+                        self.detectedSilence = true
+                        self.onSilenceDetected?()
+                    }
                 }
             }
         } else {
-            // Reset silence timer if sound detected
+            // Sound detected
+            if !hasDetectedSpeech {
+                print("[Recorder] Speech detected!")
+                hasDetectedSpeech = true
+            }
             silenceStartTime = nil
         }
     }
     
     func stopRecording() -> Data? {
+        print("[Recorder] Stopping recording...")
         levelTimer?.invalidate()
         levelTimer = nil
         audioRecorder?.stop()
         isRecording = false
         audioLevel = 0
         
-        guard let url = recordingURL else { return nil }
+        guard let url = recordingURL else { 
+            print("[Recorder] No recording URL")
+            return nil 
+        }
         
         do {
             let data = try Data(contentsOf: url)
             audioData = data
+            print("[Recorder] Recording saved: \(data.count) bytes")
             return data
         } catch {
-            print("Failed to read recording: \(error)")
+            print("[Recorder] Failed to read recording: \(error)")
             return nil
         }
     }
     
     func cancelRecording() {
+        print("[Recorder] Cancelling recording")
         levelTimer?.invalidate()
         levelTimer = nil
         audioRecorder?.stop()
         isRecording = false
         audioLevel = 0
         detectedSilence = false
+        hasDetectedSpeech = false
     }
 }
