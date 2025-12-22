@@ -14,6 +14,7 @@ struct ChatView: View {
     @StateObject private var speechRecognizer = SpeechRecognizer()
     @StateObject private var voiceService = VoiceService()
     @StateObject private var audioRecorder = AudioRecorder()
+    @StateObject private var voiceWebSocket = VoiceWebSocketManager()
     @State private var inputText = ""
     @State private var showSidePanel = false
     @State private var showSettings = false
@@ -216,6 +217,7 @@ struct ChatView: View {
             serverAddress = savedAddress
             conversationManager.serverAddress = savedAddress
             voiceService.configure(serverAddress: savedAddress)
+            voiceWebSocket.configure(serverAddress: savedAddress)
         }
         
         if UserDefaults.standard.object(forKey: "showKeyboardOnLaunch") != nil {
@@ -305,6 +307,7 @@ struct ChatView: View {
         conversationManager.serverAddress = newValue
         UserDefaults.standard.set(newValue, forKey: "serverAddress")
         voiceService.configure(serverAddress: newValue)
+        voiceWebSocket.configure(serverAddress: newValue)
         loadModelsFromServer()
     }
     
@@ -645,11 +648,22 @@ struct ChatView: View {
                     .background(Color.white)
                     .clipShape(Circle())
             }
-        } else if isVoiceModeActive || audioRecorder.isRecording {
-            // End voice mode button
+        } else if isVoiceModeActive {
+            // End voice mode button - shows different states
             Button(action: { endVoiceMode() }) {
                 HStack(spacing: 4) {
-                    VoiceModeWaveform()
+                    if voiceWebSocket.isSpeaking {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.system(size: 14))
+                    } else if voiceWebSocket.isListening {
+                        VoiceModeWaveform()
+                    } else if voiceWebSocket.isProcessing {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .tint(.black)
+                    } else {
+                        VoiceModeWaveform()
+                    }
                     Text("End")
                         .font(.system(size: 14, weight: .medium))
                 }
@@ -657,21 +671,6 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
                 .frame(height: 44)
                 .background(Color.white)
-                .clipShape(Capsule())
-            }
-        } else if voiceService.isSpeaking {
-            // Speaking indicator
-            Button(action: { voiceService.stopSpeaking() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 14))
-                    Text("Stop")
-                        .font(.system(size: 14, weight: .medium))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .frame(height: 44)
-                .background(Color.blue)
                 .clipShape(Capsule())
             }
         } else {
@@ -687,87 +686,45 @@ struct ChatView: View {
         }
     }
     
-    // MARK: - Voice Mode Functions
+    // MARK: - Voice Mode Functions (WebSocket-based)
     
     private func startVoiceMode() {
         isVoiceModeActive = true
         
-        // Set up silence detection callback
-        audioRecorder.onSilenceDetected = {
-            // Auto-process when silence detected
-            processVoiceInput()
-        }
-        
-        // Set up callback for when TTS finishes
-        voiceService.onSpeakingFinished = {
+        // Set up callback for when response completes (to resume listening)
+        voiceWebSocket.onResponseComplete = {
             resumeListeningAfterResponse()
         }
         
-        startListening()
-    }
-    
-    private func startListening() {
-        guard isVoiceModeActive else { return }
-        audioRecorder.startRecording()
+        // Connect and start listening
+        voiceWebSocket.connect()
+        
+        // Small delay to ensure connection before starting
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            voiceWebSocket.startListening()
+        }
     }
     
     private func endVoiceMode() {
         isVoiceModeActive = false
         shouldSpeakNextResponse = false
-        audioRecorder.onSilenceDetected = nil
-        voiceService.onSpeakingFinished = nil
-        audioRecorder.cancelRecording()
-        voiceService.stopSpeaking()
-    }
-    
-    private func processVoiceInput() {
-        guard isVoiceModeActive else { return }
-        
-        // Get the recorded audio
-        guard let audioData = audioRecorder.stopRecording() else {
-            // Resume listening if still in voice mode
-            startListening()
-            return
-        }
-        
-        Task {
-            do {
-                // Transcribe the audio
-                let transcript = try await voiceService.transcribe(audioData: audioData)
-                
-                await MainActor.run {
-                    if !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        inputText = transcript
-                        shouldSpeakNextResponse = true
-                        sendMessage()
-                        // Note: resumeListeningAfterResponse will be called via onSpeakingFinished
-                    } else {
-                        // No speech detected, resume listening
-                        startListening()
-                    }
-                }
-            } catch {
-                print("Voice transcription error: \(error)")
-                await MainActor.run {
-                    // Resume listening even on error
-                    startListening()
-                }
-            }
-        }
+        voiceWebSocket.onResponseComplete = nil
+        voiceWebSocket.stopListening()
+        voiceWebSocket.disconnect()
     }
     
     private func resumeListeningAfterResponse() {
         guard isVoiceModeActive else { return }
         
         // Small delay before resuming to avoid picking up speaker audio
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            if isVoiceModeActive && !voiceService.isSpeaking && !conversationManager.isLoading {
-                startListening()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if isVoiceModeActive && !voiceWebSocket.isSpeaking {
+                voiceWebSocket.startListening()
             }
         }
     }
     
-    // Called after AI response to speak it
+    // Called after AI response to speak it (REST fallback)
     private func speakResponse(_ text: String) {
         guard voiceService.isTTSAvailable else { return }
         
@@ -811,36 +768,10 @@ struct ChatView: View {
         inputText = ""
         inputTextHeight = 28
         
-        // If this was a voice message, speak the response when ready
+        // Note: Voice mode now uses WebSocket which handles TTS internally
+        // The shouldSpeakNextResponse flag is kept for potential REST fallback
         if shouldSpeakNextResponse {
-            print("[Voice] shouldSpeakNextResponse is true, waiting for LLM...")
-            Task {
-                // Wait for response to complete
-                while conversationManager.isLoading {
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
-                }
-                
-                print("[Voice] LLM finished, checking for response...")
-                
-                await MainActor.run {
-                    shouldSpeakNextResponse = false
-                }
-                
-                // Get the last AI message and speak it
-                // onSpeakingFinished callback will trigger resumeListeningAfterResponse
-                if let lastMessage = conversationManager.currentConversation.messages.last,
-                   !lastMessage.isUser,
-                   !lastMessage.content.isEmpty {
-                    print("[Voice] Speaking AI response: \(lastMessage.content.prefix(50))...")
-                    await voiceService.speak(text: lastMessage.content)
-                } else {
-                    print("[Voice] No AI message to speak")
-                    // No message to speak, resume listening directly
-                    await MainActor.run {
-                        resumeListeningAfterResponse()
-                    }
-                }
-            }
+            shouldSpeakNextResponse = false
         }
     }
     
