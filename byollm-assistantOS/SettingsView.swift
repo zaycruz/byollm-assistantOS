@@ -21,6 +21,7 @@ struct SettingsView: View {
     @Binding var availableModels: [String]
     @Binding var cloudModels: [String]
     @State private var showingDeleteAlert = false
+    @State private var isLoadingModels = false
     @State private var showingPersonalization = false
     @State private var editingServerAddress: String = ""
     @State private var connectionStatus: ConnectionStatus = .disconnected
@@ -268,6 +269,21 @@ struct SettingsView: View {
                                         
                                         Spacer()
                                         
+                                        // Refresh button
+                                        Button(action: refreshModels) {
+                                            if isLoadingModels {
+                                                ProgressView()
+                                                    .scaleEffect(0.8)
+                                                    .tint(.white.opacity(0.7))
+                                            } else {
+                                                Image(systemName: "arrow.clockwise")
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.white.opacity(0.7))
+                                            }
+                                        }
+                                        .frame(width: 28, height: 28)
+                                        .disabled(isLoadingModels || editingServerAddress.isEmpty)
+                                        
                                         Menu {
                                             ForEach(currentModels, id: \.self) { model in
                                                 Button(action: {
@@ -295,7 +311,7 @@ struct SettingsView: View {
                                     }
                                     
                                     // Model description
-                                    Text("Select which model to use for conversations")
+                                    Text("Tap refresh to fetch models from server")
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                         .padding(.leading, 40)
@@ -440,6 +456,32 @@ struct SettingsView: View {
     
     private func formatModelName(_ modelName: String) -> String {
         modelName.replacingOccurrences(of: ":latest", with: "")
+    }
+    
+    private func refreshModels() {
+        guard !editingServerAddress.isEmpty else { return }
+        
+        isLoadingModels = true
+        
+        Task {
+            do {
+                let models = try await NetworkManager.shared.getModels(from: editingServerAddress)
+                
+                await MainActor.run {
+                    isLoadingModels = false
+                    if !models.isEmpty {
+                        availableModels = models
+                        if !models.contains(selectedModel) {
+                            selectedModel = models.first ?? selectedModel
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isLoadingModels = false
+                }
+            }
+        }
     }
     
     private func testConnection() {
