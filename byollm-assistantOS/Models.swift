@@ -280,25 +280,9 @@ class ConversationManager: ObservableObject {
                         // Check for cancellation in the callback
                         guard !Task.isCancelled else { return }
                         
-                        // For models with separate reasoning_content field, just accumulate normally
-                        if effectiveReasoningEffort != nil {
-                            accumulatedResponse += chunk
-                            
-                            let currentResponse = accumulatedResponse
-                            let currentReasoning = accumulatedReasoning
-                            
-                            Task { @MainActor in
-                                guard !Task.isCancelled else { return }
-                                if messageIndex < self.currentConversation.messages.count {
-                                    self.currentConversation.messages[messageIndex] = Message(
-                                        content: currentResponse,
-                                        isUser: false,
-                                        timestamp: self.currentConversation.messages[messageIndex].timestamp,
-                                        thinkingContent: currentReasoning.isEmpty ? nil : currentReasoning
-                                    )
-                                }
-                            }
-                        } else if self.shouldParseThinkingTokens() {
+                        // Always parse <think> tags from the content stream
+                        // This handles models that embed thinking in <think> tags
+                        if self.shouldParseThinkingTokens() {
                             // For Qwen models, parse thinking tags in real-time during streaming
                             var processedChunk = chunk
                             
@@ -424,22 +408,39 @@ class ConversationManager: ObservableObject {
                 // After streaming is complete, finalize the message
                 print("✅ Streaming complete!")
                 print("📄 Total content: \(accumulatedResponse.count) chars")
-                print("💭 Total reasoning: \(accumulatedReasoning.count) chars")
+                print("💭 Total reasoning from callback: \(accumulatedReasoning.count) chars")
                 
-                // For Qwen models, parse thinking tokens from content
-                // For GPT-oss models, reasoning content is already separated
+                // Parse thinking tokens from content as fallback or primary source
+                // This handles both:
+                // 1. Models that send <think> tags in the content stream
+                // 2. Models that send reasoning_content separately (accumulatedReasoning)
                 let finalParsed: (thinking: String?, content: String)
-                if self.shouldParseThinkingTokens() && accumulatedReasoning.isEmpty {
-                    // Qwen models: parse <think> tags from content
-                    finalParsed = self.parseThinkingTokens(from: accumulatedResponse)
-                    print("🔍 Parsed Qwen thinking tokens: \(finalParsed.thinking?.count ?? 0) chars")
-                } else if !accumulatedReasoning.isEmpty {
-                    // GPT-oss models: use the separate reasoning_content field
-                    finalParsed = (thinking: accumulatedReasoning, content: accumulatedResponse)
-                    print("🔍 Using GPT-oss reasoning_content: \(accumulatedReasoning.count) chars")
+                
+                // Always try to parse <think> tags from the response content
+                let parsedFromContent = self.parseThinkingTokens(from: accumulatedResponse)
+                print("🔍 Parsed <think> tags from content: \(parsedFromContent.thinking?.count ?? 0) chars")
+                
+                if !accumulatedReasoning.isEmpty {
+                    // We have reasoning from the separate callback (reasoning_content field)
+                    // Also check if there was additional thinking in the content
+                    if let contentThinking = parsedFromContent.thinking, !contentThinking.isEmpty {
+                        // Combine both sources
+                        let combined = accumulatedReasoning + "\n\n---\n\n" + contentThinking
+                        finalParsed = (thinking: combined, content: parsedFromContent.content)
+                        print("🔍 Combined reasoning_content + <think> tags: \(combined.count) chars")
+                    } else {
+                        // Just use reasoning_content
+                        finalParsed = (thinking: accumulatedReasoning, content: parsedFromContent.content)
+                        print("🔍 Using reasoning_content only: \(accumulatedReasoning.count) chars")
+                    }
+                } else if let contentThinking = parsedFromContent.thinking, !contentThinking.isEmpty {
+                    // Only have thinking from <think> tags in content
+                    finalParsed = parsedFromContent
+                    print("🔍 Using <think> tags only: \(contentThinking.count) chars")
                 } else {
-                    // No thinking content
+                    // No thinking content from either source
                     finalParsed = (thinking: nil, content: accumulatedResponse)
+                    print("🔍 No thinking content found")
                 }
                 
                 if messageIndex < self.currentConversation.messages.count {
