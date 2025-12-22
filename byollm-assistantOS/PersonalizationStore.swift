@@ -19,6 +19,7 @@ struct PersonalizationSettings: Codable, Equatable {
     func systemPrompt() -> String {
         var lines: [String] = []
         
+        // User info
         let trimmedName = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -32,6 +33,7 @@ struct PersonalizationSettings: Codable, Equatable {
             }
         }
         
+        // Personal preferences / instructions
         let trimmedPreferences = personalPreferences.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedPreferences.isEmpty {
             if !lines.isEmpty {
@@ -41,8 +43,7 @@ struct PersonalizationSettings: Codable, Equatable {
             lines.append(trimmedPreferences)
         }
         
-        return lines.joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -73,9 +74,7 @@ struct PersonalizationStore {
         if let data = try? JSONEncoder().encode(settings) {
             defaults.set(data, forKey: Keys.settingsData)
         }
-        
         // Keep `systemPrompt` in sync for the chat request pipeline.
         defaults.set(settings.systemPrompt(), forKey: Keys.legacySystemPrompt)
     }
 }
-

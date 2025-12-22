@@ -139,3 +139,4 @@ class SpeechRecognizer: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false)
     }
 }
+
