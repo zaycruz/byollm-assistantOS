@@ -527,7 +527,7 @@ struct ChatView: View {
                 speechRecognizer.startRecording()
             }
         }) {
-            Image(systemName: speechRecognizer.isRecording ? "mic.fill" : "mic")
+            Image(systemName: "waveform")
                 .font(.title2)
                 .foregroundColor(speechRecognizer.isRecording ? .red : .white)
                 .frame(width: 44, height: 44)
