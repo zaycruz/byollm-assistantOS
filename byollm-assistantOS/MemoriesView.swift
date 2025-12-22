@@ -59,6 +59,11 @@ class MemoriesStore: ObservableObject {
         save()
     }
     
+    func deleteAll() {
+        memories.removeAll()
+        save()
+    }
+    
     func toggle(_ memory: Memory) {
         if let index = memories.firstIndex(where: { $0.id == memory.id }) {
             memories[index].isEnabled.toggle()
@@ -69,14 +74,26 @@ class MemoriesStore: ObservableObject {
     func enabledMemories() -> [Memory] {
         memories.filter { $0.isEnabled }
     }
+    
+    func search(_ query: String) -> [Memory] {
+        if query.isEmpty {
+            return memories
+        }
+        return memories.filter { $0.content.localizedCaseInsensitiveContains(query) }
+    }
 }
 
 struct MemoriesView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var store = MemoriesStore()
-    @State private var newMemoryText = ""
+    @State private var searchText = ""
     @State private var showingAddMemory = false
-    @FocusState private var isTextFieldFocused: Bool
+    @State private var showingMenu = false
+    @State private var showingDeleteAllConfirm = false
+    
+    var filteredMemories: [Memory] {
+        store.search(searchText)
+    }
     
     var body: some View {
         ZStack {
@@ -87,42 +104,41 @@ struct MemoriesView: View {
                 HStack {
                     Button(action: { dismiss() }) {
                         Image(systemName: "chevron.left")
-                            .font(.title3)
+                            .font(.body.weight(.semibold))
                             .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 40, height: 40)
                             .background(Color.white.opacity(0.1))
                             .clipShape(Circle())
                     }
                     
                     Spacer()
                     
-                    Text("Memories")
-                        .font(.title2)
+                    Text("Saved memories")
+                        .font(.body)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
                     
                     Spacer()
                     
-                    Button(action: { showingAddMemory = true }) {
-                        Image(systemName: "plus")
-                            .font(.title3)
+                    Menu {
+                        Button(action: { showingAddMemory = true }) {
+                            Label("Add Memory", systemImage: "plus")
+                        }
+                        Button(role: .destructive, action: { showingDeleteAllConfirm = true }) {
+                            Label("Delete All", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.body.weight(.semibold))
                             .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 40, height: 40)
                             .background(Color.white.opacity(0.1))
                             .clipShape(Circle())
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 60)
-                .padding(.bottom, 20)
-                
-                // Description
-                Text("Memories help the AI remember important information about you across conversations.")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 20)
+                .padding(.bottom, 16)
                 
                 if store.memories.isEmpty {
                     Spacer()
@@ -136,73 +152,97 @@ struct MemoriesView: View {
                             .font(.headline)
                             .foregroundColor(.white.opacity(0.5))
                         
-                        Text("Tap + to add your first memory")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.3))
+                        Button(action: { showingAddMemory = true }) {
+                            Text("Add your first memory")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(20)
+                        }
                     }
                     
                     Spacer()
                 } else {
+                    // Memories List
                     ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(store.memories) { memory in
-                                MemoryRow(memory: memory, store: store)
+                        VStack(spacing: 0) {
+                            // Memory cards in a container
+                            VStack(spacing: 0) {
+                                ForEach(Array(filteredMemories.enumerated()), id: \.element.id) { index, memory in
+                                    MemoryCard(memory: memory, store: store)
+                                    
+                                    if index < filteredMemories.count - 1 {
+                                        Divider()
+                                            .background(Color.white.opacity(0.1))
+                                            .padding(.horizontal, 16)
+                                    }
+                                }
                             }
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(16)
+                            .padding(.horizontal, 16)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 40)
+                        .padding(.bottom, 100)
                     }
+                    
+                    Spacer(minLength: 0)
+                    
+                    // Search bar at bottom
+                    HStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.white.opacity(0.4))
+                        
+                        TextField("Search", text: $searchText)
+                            .foregroundColor(.white)
+                            .placeholder(when: searchText.isEmpty) {
+                                Text("Search")
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 40)
                 }
             }
         }
         .sheet(isPresented: $showingAddMemory) {
             AddMemorySheet(store: store)
         }
+        .confirmationDialog("Delete All Memories", isPresented: $showingDeleteAllConfirm) {
+            Button("Delete All", role: .destructive) {
+                store.deleteAll()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to delete all memories? This cannot be undone.")
+        }
     }
 }
 
-struct MemoryRow: View {
+struct MemoryCard: View {
     let memory: Memory
     @ObservedObject var store: MemoriesStore
     @State private var showingDeleteConfirm = false
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            // Toggle
-            Button(action: { store.toggle(memory) }) {
-                Image(systemName: memory.isEnabled ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundColor(memory.isEnabled ? .green : .white.opacity(0.3))
+        Text(memory.content)
+            .font(.body)
+            .foregroundColor(.white.opacity(0.9))
+            .lineSpacing(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+            .contextMenu {
+                Button(role: .destructive, action: { store.delete(memory) }) {
+                    Label("Delete", systemImage: "trash")
+                }
             }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(memory.content)
-                    .font(.body)
-                    .foregroundColor(memory.isEnabled ? .white : .white.opacity(0.5))
-                    .lineLimit(3)
-                
-                Text(memory.createdAt, style: .relative)
-                    .font(.caption)
-                    .foregroundColor(.gray)
-            }
-            
-            Spacer()
-            
-            Button(action: { showingDeleteConfirm = true }) {
-                Image(systemName: "trash")
-                    .font(.body)
-                    .foregroundColor(.red.opacity(0.7))
-            }
-        }
-        .padding(16)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(12)
-        .confirmationDialog("Delete Memory", isPresented: $showingDeleteConfirm) {
-            Button("Delete", role: .destructive) {
-                store.delete(memory)
-            }
-            Button("Cancel", role: .cancel) { }
-        }
     }
 }
 
@@ -282,6 +322,20 @@ struct AddMemorySheet: View {
         }
         .onAppear {
             isFocused = true
+        }
+    }
+}
+
+// Placeholder modifier for TextField
+extension View {
+    func placeholder<Content: View>(
+        when shouldShow: Bool,
+        alignment: Alignment = .leading,
+        @ViewBuilder placeholder: () -> Content
+    ) -> some View {
+        ZStack(alignment: alignment) {
+            placeholder().opacity(shouldShow ? 1 : 0)
+            self
         }
     }
 }
