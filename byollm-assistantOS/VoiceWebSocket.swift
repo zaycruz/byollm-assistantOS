@@ -31,6 +31,14 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     private var playerNode = AVAudioPlayerNode()
     private var playbackFormat: AVAudioFormat?
     private var wavAudioPlayer: AVAudioPlayer?  // For WAV fallback playback
+
+    // Client-side barge-in (interruption) fallback
+    // If the server doesn't emit `interrupted`, we still stop audio immediately
+    private var bargeInFrameCount: Int = 0
+    private var lastBargeInTime: TimeInterval = 0
+    private let bargeInLevelThreshold: Float = 0.06 // avgLevel (0..1), pre-amplification
+    private let bargeInMinFrames: Int = 3           // ~300ms at 4096 buffer / ~0.1s callbacks
+    private let bargeInCooldownSeconds: TimeInterval = 1.0
     
     private var serverURL: URL?
     private var conversationId: String?
@@ -238,6 +246,10 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             sum += abs(Float(int16Data[0][i]))
         }
         let avgLevel = sum / Float(max(frameLength, 1)) / 32768.0
+
+        // Client-side barge-in: if user speaks while AI is speaking,
+        // immediately stop local playback and notify server (best-effort).
+        handleLocalBargeInIfNeeded(avgLevel: avgLevel)
         
         DispatchQueue.main.async {
             self.audioLevel = min(1.0, avgLevel * 3)  // Amplify for visibility
@@ -251,6 +263,42 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             if let error = error {
                 print("[WS] Send error: \(error)")
             }
+        }
+    }
+
+    private func handleLocalBargeInIfNeeded(avgLevel: Float) {
+        guard isSpeaking else {
+            bargeInFrameCount = 0
+            return
+        }
+
+        let now = Date().timeIntervalSince1970
+        if now - lastBargeInTime < bargeInCooldownSeconds {
+            return
+        }
+
+        if avgLevel > bargeInLevelThreshold {
+            bargeInFrameCount += 1
+            if bargeInFrameCount >= bargeInMinFrames {
+                bargeInFrameCount = 0
+                lastBargeInTime = now
+
+                print("[WS] Local barge-in detected (avgLevel=\(avgLevel)) -> stopping playback")
+
+                // Stop audio immediately on main thread
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.status = "Interrupted"
+                    self.isSpeaking = false
+                    self.stopAllPlayback()
+                }
+
+                // Best-effort notify server (server may ignore if unsupported)
+                send(["type": "interrupt"])
+            }
+        } else {
+            // decay quickly so brief blips don't accumulate forever
+            bargeInFrameCount = max(0, bargeInFrameCount - 1)
         }
     }
     
