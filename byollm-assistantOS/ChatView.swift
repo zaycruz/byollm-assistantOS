@@ -462,19 +462,19 @@ struct ChatView: View {
         VStack(spacing: 0) {
             HStack(alignment: .bottom, spacing: 12) {
                 // Main Glass Container
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     // Text Input Area
                     ZStack(alignment: .topLeading) {
                         if inputText.isEmpty {
-                            Text("Reply to AssistantOS")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white.opacity(0.35))
+                            Text("Reply to \(selectedModel.isEmpty ? "Assistant" : formatModelName(selectedModel))")
+                                .font(.system(size: 17))
+                                .foregroundColor(.white.opacity(0.4))
                                 .padding(.horizontal, 4)
-                                .padding(.top, 4)
+                                .padding(.top, 8)
                         }
                         
                         TextEditor(text: $inputText)
-                            .font(.system(size: 20))
+                            .font(.system(size: 17))
                             .foregroundColor(.white)
                             .focused($isInputFocused)
                             .scrollContentBackground(.hidden)
@@ -482,7 +482,7 @@ struct ChatView: View {
                             .frame(minHeight: 36, maxHeight: 150)
                             .frame(height: inputTextHeight)
                             .padding(.horizontal, -4)
-                            .padding(.vertical, -4)
+                            .padding(.vertical, -8)
                             .disabled(conversationManager.isLoading)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.sentences)
@@ -502,16 +502,16 @@ struct ChatView: View {
                                 .foregroundColor(.white)
                         }
                         
-                        // Blue Pill (to match reference)
+                        // Blue Pill (Context/History)
                         HStack(spacing: 12) {
                             Image(systemName: "clock.arrow.circlepath")
                             Image(systemName: "xmark")
                         }
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.blue.opacity(0.9))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Color.blue.opacity(0.2))
+                        .background(Color(red: 0.15, green: 0.35, blue: 0.65))
                         .clipShape(Capsule())
                         
                         Spacer()
@@ -521,43 +521,41 @@ struct ChatView: View {
                         } else {
                             Image(systemName: "mic")
                                 .font(.system(size: 22, weight: .regular))
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(.white.opacity(0.6))
                         }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
                 .background {
                     ZStack {
-                        // Thick liquid glass background
                         RoundedRectangle(cornerRadius: 32)
                             .fill(.ultraThinMaterial)
+                            .opacity(0.95) // Darker/more opaque to match reference
                         
-                        // Refined liquid highlight - prominent top edge
+                        RoundedRectangle(cornerRadius: 32)
+                            .fill(Color.black.opacity(0.2)) // Tint it slightly darker
+                        
+                        // Liquid highlight - sharp top edge
                         RoundedRectangle(cornerRadius: 32)
                             .stroke(
                                 LinearGradient(
-                                    colors: [
-                                        .white.opacity(0.3),
-                                        .white.opacity(0.05),
-                                        .clear
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
+                                    colors: [.white.opacity(0.3), .clear, .white.opacity(0.05)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 ),
-                                lineWidth: 1.0
+                                lineWidth: 0.5
                             )
                     }
                 }
                 .cornerRadius(32)
-                .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 10)
+                .shadow(color: .black.opacity(0.4), radius: 20, x: 0, y: 10)
                 
-                // Separate Waveform Button (solid white circle with black icon)
+                // Separate Waveform Button (Solid White)
                 microphoneButton
-                    .padding(.bottom, 2)
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 20)
+            .padding(.bottom, 12)
         }
     }
 
@@ -574,12 +572,13 @@ struct ChatView: View {
             }
         }) {
             Image(systemName: "waveform")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(speechRecognizer.isRecording ? .red : .black)
-                .frame(width: 54, height: 54)
-                .background(speechRecognizer.isRecording ? Color.red.opacity(0.3) : Color.white)
+                .font(.system(size: 22, weight: .semibold)) // Slightly bolder/larger
+                .foregroundColor(speechRecognizer.isRecording ? .red : .black) // Black icon when not recording
+                .frame(width: 52, height: 52) // Slightly larger button
+                .background(speechRecognizer.isRecording ? Color.red.opacity(0.15) : Color.white) // White background
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
+                // Removed glass overlay/stroke since it's solid white in reference
+                .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5) // Soft shadow for depth
         }
     }
 
@@ -588,13 +587,13 @@ struct ChatView: View {
         if conversationManager.isLoading {
             Button(action: { conversationManager.stopGenerating() }) {
                 Image(systemName: "stop.circle.fill")
-                    .font(.system(size: 28))
+                    .font(.system(size: 26))
                     .foregroundColor(.red)
             }
         } else if !inputText.isEmpty {
             Button(action: { sendMessage() }) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
+                    .font(.system(size: 26))
                     .foregroundColor(.white)
             }
         }
@@ -772,11 +771,11 @@ struct MessagesListView: View {
                         isNearBottom = true
                     }
                 }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 20, weight: .semibold))
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.white)
-                        .frame(width: 46, height: 46)
-                        .background(Color.black.opacity(0.7))
+                        .frame(width: 42, height: 42)
+                        .background(Color.black.opacity(0.6))
                         .clipShape(Circle())
                         .overlay(
                             Circle()
@@ -784,7 +783,7 @@ struct MessagesListView: View {
                         )
                         .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, 20)
                 .transition(.scale.combined(with: .opacity))
             }
         }
