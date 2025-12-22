@@ -36,8 +36,9 @@ struct ChatView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     
-    // Speech-to-Speech (S2S) state
-    @State private var showS2SView = false
+    // Voice Mode state (integrated in chat, not separate view)
+    @State private var isVoiceModeActive = false
+    @State private var voiceModeWaveformPhase: CGFloat = 0
     
     // Computed property for current available models based on provider
     private var currentAvailableModels: [String] {
@@ -406,9 +407,6 @@ struct ChatView: View {
             .fullScreenCover(isPresented: $showCamera) {
                 CameraView(image: $selectedImage)
             }
-            .fullScreenCover(isPresented: $showS2SView) {
-                SpeechToSpeechView()
-            }
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
                 switch result {
                 case .success(let url):
@@ -510,100 +508,83 @@ struct ChatView: View {
     }
     
     private var chatInputArea: some View {
-        VStack(spacing: 0) {
-            // Main Glass Container - everything inside
-            Group {
-                if speechRecognizer.isRecording {
-                    // Recording Mode UI
-                    recordingModeView
-                } else {
-                    // Normal Input Mode UI
-                    normalInputModeView
-                }
+        HStack(spacing: 10) {
+            // Plus button - outside the glass container
+            Button(action: { showAttachmentOptions = true }) {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.1))
+                    .clipShape(Circle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color.white.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                    )
-            )
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            
+            // Glass input container
+            glassInputContainer
+            
+            // Voice mode button - outside the glass container
+            voiceModeButton
         }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
     }
     
-    @ViewBuilder
-    private var normalInputModeView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Text Input Area
-            ZStack(alignment: .topLeading) {
+    private var glassInputContainer: some View {
+        HStack(spacing: 8) {
+            if speechRecognizer.isRecording && !isVoiceModeActive {
+                // STT Recording mode - compact waveform
+                sttRecordingContent
+            } else {
+                // Normal text input with mic
+                normalInputContent
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                )
+        )
+    }
+    
+    private var normalInputContent: some View {
+        HStack(spacing: 8) {
+            // Text field
+            ZStack(alignment: .leading) {
                 if inputText.isEmpty {
-                    Text("Reply to LLM")
-                        .font(.system(size: 17))
+                    Text("Ask anything")
+                        .font(.system(size: 16))
                         .foregroundColor(.white.opacity(0.4))
-                        .padding(.top, 2)
                 }
                 
-                TextEditor(text: $inputText)
-                    .font(.system(size: 17))
+                TextField("", text: $inputText, axis: .vertical)
+                    .font(.system(size: 16))
                     .foregroundColor(.white)
                     .focused($isInputFocused)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .frame(minHeight: 24, maxHeight: 120)
-                    .frame(height: inputTextHeight)
-                    .padding(.horizontal, -5)
-                    .padding(.vertical, -8)
+                    .lineLimit(1...4)
                     .disabled(conversationManager.isLoading)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.sentences)
-                    .onChange(of: inputText) { oldValue, newValue in
-                        if newValue.count > 10000 {
-                            inputText = String(newValue.prefix(10000))
-                        }
-                        updateInputHeight(for: newValue)
-                    }
+                    .onSubmit { if !inputText.isEmpty { sendMessage() } }
             }
+            .frame(maxWidth: .infinity)
             
-            // Bottom Buttons Row
-            HStack(spacing: 12) {
-                // Plus button - attachment options
-                Button(action: { showAttachmentOptions = true }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(.white)
-                }
-                
-                Spacer()
-                
-                // Mic button - always visible for STT
-                Button(action: {
-                    speechRecognizer.startRecording()
-                }) {
-                    Image(systemName: "mic")
-                        .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                
-                // S2S button OR Send button (depending on input state)
-                if !inputText.isEmpty || conversationManager.isLoading {
-                    // Send/Stop button when there's text or loading
-                    sendOrStopButton
-                } else {
-                    // Waveform button - Speech-to-Speech mode (only when no text)
-                    speechToSpeechButton
-                }
+            // Mic button inside the glass
+            Button(action: { speechRecognizer.startRecording() }) {
+                Image(systemName: "mic")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white.opacity(0.5))
             }
         }
     }
     
-    @ViewBuilder
-    private var recordingModeView: some View {
-        HStack(spacing: 16) {
+    private var sttRecordingContent: some View {
+        HStack(spacing: 12) {
             // Stop button
             Button(action: {
                 speechRecognizer.stopRecording()
@@ -612,87 +593,109 @@ struct ChatView: View {
                 }
             }) {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 12))
                     .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(0.15))
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.2))
                     .clipShape(Circle())
             }
             
-            // Waveform visualization
+            // Waveform
             HStack(spacing: 2) {
-                ForEach(0..<30, id: \.self) { index in
+                ForEach(0..<20, id: \.self) { index in
                     WaveformBar(index: index)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 32)
+            .frame(height: 24)
             
             // Send button
             Button(action: {
                 speechRecognizer.stopRecording()
                 if !speechRecognizer.transcript.isEmpty {
                     inputText = speechRecognizer.transcript
-                    // Auto-send after a brief delay to show the text
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        if !inputText.isEmpty {
-                            sendMessage()
-                        }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        if !inputText.isEmpty { sendMessage() }
                     }
                 }
             }) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.black)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 28, height: 28)
                     .background(Color.white)
                     .clipShape(Circle())
             }
         }
-        .frame(height: 48)
-    }
-
-    @ViewBuilder
-    private var speechToSpeechButton: some View {
-        Button(action: {
-            showS2SView = true
-        }) {
-            Image(systemName: "waveform")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.black)
-                .frame(width: 40, height: 40)
-                .background(
-                    Circle()
-                        .fill(Color.white)
-                )
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
-                )
-        }
     }
     
     @ViewBuilder
-    private var sendOrStopButton: some View {
+    private var voiceModeButton: some View {
         if conversationManager.isLoading {
             // Stop button when generating
             Button(action: { conversationManager.stopGenerating() }) {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 14))
                     .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .background(Color.red)
                     .clipShape(Circle())
             }
-        } else {
+        } else if !inputText.isEmpty {
             // Send button when there's text
             Button(action: { sendMessage() }) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.black)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .background(Color.white)
                     .clipShape(Circle())
+            }
+        } else if isVoiceModeActive {
+            // End voice mode button
+            Button(action: { endVoiceMode() }) {
+                HStack(spacing: 4) {
+                    VoiceModeWaveform()
+                    Text("End")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 12)
+                .frame(height: 44)
+                .background(Color(red: 0.3, green: 0.8, blue: 0.7))
+                .clipShape(Capsule())
+            }
+        } else {
+            // Start voice mode button (green waveform)
+            Button(action: { startVoiceMode() }) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.black)
+                    .frame(width: 44, height: 44)
+                    .background(Color(red: 0.3, green: 0.75, blue: 0.45))
+                    .clipShape(Circle())
+            }
+        }
+    }
+    
+    // MARK: - Voice Mode Functions
+    
+    private func startVoiceMode() {
+        isVoiceModeActive = true
+        speechRecognizer.startRecording()
+    }
+    
+    private func endVoiceMode() {
+        speechRecognizer.stopRecording()
+        isVoiceModeActive = false
+        
+        // If there's a transcript, send it as a message
+        if !speechRecognizer.transcript.isEmpty {
+            inputText = speechRecognizer.transcript
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                if !inputText.isEmpty {
+                    sendMessage()
+                }
             }
         }
     }
@@ -2285,7 +2288,7 @@ struct NavItem: View {
 struct WaveformBar: View {
     let index: Int
     @State private var height: CGFloat = 4
-    
+
     var body: some View {
         RoundedRectangle(cornerRadius: 1.5)
             .fill(Color.white.opacity(0.6))
@@ -2300,6 +2303,32 @@ struct WaveformBar: View {
                     height = CGFloat.random(in: 8...28)
                 }
             }
+    }
+}
+
+// MARK: - Voice Mode Waveform (End Button)
+struct VoiceModeWaveform: View {
+    @State private var phase: CGFloat = 0
+    
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<4, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.black)
+                    .frame(width: 2, height: barHeight(for: index))
+            }
+        }
+        .onAppear {
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+                phase += 0.5
+            }
+        }
+    }
+    
+    private func barHeight(for index: Int) -> CGFloat {
+        let base: CGFloat = 10
+        let variation = sin(phase + CGFloat(index) * 0.8) * 5
+        return max(4, base + variation)
     }
 }
 
