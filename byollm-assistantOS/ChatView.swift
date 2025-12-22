@@ -12,6 +12,8 @@ import UniformTypeIdentifiers
 struct ChatView: View {
     @StateObject private var conversationManager = ConversationManager()
     @StateObject private var speechRecognizer = SpeechRecognizer()
+    @StateObject private var voiceService = VoiceService()
+    @StateObject private var audioRecorder = AudioRecorder()
     @State private var inputText = ""
     @State private var showSidePanel = false
     @State private var showSettings = false
@@ -39,6 +41,7 @@ struct ChatView: View {
     // Voice Mode state (integrated in chat, not separate view)
     @State private var isVoiceModeActive = false
     @State private var voiceModeWaveformPhase: CGFloat = 0
+    @State private var shouldSpeakNextResponse = false
     
     // Computed property for current available models based on provider
     private var currentAvailableModels: [String] {
@@ -212,6 +215,7 @@ struct ChatView: View {
         if let savedAddress = UserDefaults.standard.string(forKey: "serverAddress") {
             serverAddress = savedAddress
             conversationManager.serverAddress = savedAddress
+            voiceService.configure(serverAddress: savedAddress)
         }
         
         if UserDefaults.standard.object(forKey: "showKeyboardOnLaunch") != nil {
@@ -300,6 +304,7 @@ struct ChatView: View {
     private func handleServerAddressChange(_ newValue: String) {
         conversationManager.serverAddress = newValue
         UserDefaults.standard.set(newValue, forKey: "serverAddress")
+        voiceService.configure(serverAddress: newValue)
         loadModelsFromServer()
     }
     
@@ -640,7 +645,7 @@ struct ChatView: View {
                     .background(Color.white)
                     .clipShape(Circle())
             }
-        } else if isVoiceModeActive {
+        } else if isVoiceModeActive || audioRecorder.isRecording {
             // End voice mode button
             Button(action: { endVoiceMode() }) {
                 HStack(spacing: 4) {
@@ -652,6 +657,21 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
                 .frame(height: 44)
                 .background(Color.white)
+                .clipShape(Capsule())
+            }
+        } else if voiceService.isSpeaking {
+            // Speaking indicator
+            Button(action: { voiceService.stopSpeaking() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 14))
+                    Text("Stop")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .frame(height: 44)
+                .background(Color.blue)
                 .clipShape(Capsule())
             }
         } else {
@@ -671,21 +691,41 @@ struct ChatView: View {
     
     private func startVoiceMode() {
         isVoiceModeActive = true
-        speechRecognizer.startRecording()
+        audioRecorder.startRecording()
     }
     
     private func endVoiceMode() {
-        speechRecognizer.stopRecording()
         isVoiceModeActive = false
         
-        // If there's a transcript, send it as a message
-        if !speechRecognizer.transcript.isEmpty {
-            inputText = speechRecognizer.transcript
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                if !inputText.isEmpty {
-                    sendMessage()
+        // Get the recorded audio and transcribe it
+        guard let audioData = audioRecorder.stopRecording() else {
+            return
+        }
+        
+        Task {
+            do {
+                // Transcribe the audio
+                let transcript = try await voiceService.transcribe(audioData: audioData)
+                
+                await MainActor.run {
+                    if !transcript.isEmpty {
+                        inputText = transcript
+                        shouldSpeakNextResponse = true // Speak the AI response
+                        sendMessage()
+                    }
                 }
+            } catch {
+                print("Voice transcription error: \(error)")
             }
+        }
+    }
+    
+    // Called after AI response to speak it
+    private func speakResponse(_ text: String) {
+        guard voiceService.isTTSAvailable else { return }
+        
+        Task {
+            await voiceService.speak(text: text)
         }
     }
 
@@ -723,6 +763,27 @@ struct ChatView: View {
         conversationManager.sendMessage(inputText)
         inputText = ""
         inputTextHeight = 28
+        
+        // If this was a voice message, speak the response when ready
+        if shouldSpeakNextResponse {
+            Task {
+                // Wait for response to complete
+                while conversationManager.isLoading {
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+                }
+                
+                // Get the last AI message and speak it
+                if let lastMessage = conversationManager.currentConversation.messages.last,
+                   !lastMessage.isUser,
+                   !lastMessage.content.isEmpty {
+                    await voiceService.speak(text: lastMessage.content)
+                }
+                
+                await MainActor.run {
+                    shouldSpeakNextResponse = false
+                }
+            }
+        }
     }
     
     private func formatModelName(_ modelName: String) -> String {
