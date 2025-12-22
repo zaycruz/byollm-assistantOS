@@ -460,26 +460,35 @@ struct ChatView: View {
     
     private var chatInputArea: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .bottom, spacing: 12) {
-                // Main Glass Container
-                VStack(alignment: .leading, spacing: 10) {
-                    // Text Input Area
+            HStack(alignment: .bottom, spacing: 16) {
+                // Plus icon sits OUTSIDE the glass bar (per reference)
+                Button(action: {}) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .regular))
+                        .foregroundColor(.white.opacity(0.9))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("More actions")
+
+                // Main glass bar
+                VStack(alignment: .leading, spacing: 12) {
+                    // Text input + placeholder
                     ZStack(alignment: .topLeading) {
                         if inputText.isEmpty {
-                            Text("Reply to \(selectedModel.isEmpty ? "Assistant" : formatModelName(selectedModel))")
-                                .font(.system(size: 17))
-                                .foregroundColor(.white.opacity(0.4))
-                                .padding(.horizontal, 4)
-                                .padding(.top, 8)
+                            Text("Reply to Claude")
+                                .font(.system(size: 20, weight: .regular))
+                                .foregroundColor(.white.opacity(0.35))
+                                .padding(.top, 6)
+                                .padding(.leading, 4)
                         }
-                        
+
                         TextEditor(text: $inputText)
-                            .font(.system(size: 17))
+                            .font(.system(size: 18, weight: .regular))
                             .foregroundColor(.white)
                             .focused($isInputFocused)
                             .scrollContentBackground(.hidden)
                             .background(Color.clear)
-                            .frame(minHeight: 36, maxHeight: 150)
+                            .frame(minHeight: 38, maxHeight: 150)
                             .frame(height: inputTextHeight)
                             .padding(.horizontal, -4)
                             .padding(.vertical, -8)
@@ -493,74 +502,67 @@ struct ChatView: View {
                                 updateInputHeight(for: newValue)
                             }
                     }
-                    
-                    // Bottom Buttons Row (Inside Glass)
-                    HStack(spacing: 16) {
-                        Button(action: {}) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 24, weight: .regular))
-                                .foregroundColor(.white)
-                        }
-                        
-                        // Blue Pill (Context/History)
-                        HStack(spacing: 12) {
-                            Image(systemName: "clock.arrow.circlepath")
+
+                    // Bottom row: blue pill + mic/send at the far right
+                    HStack(spacing: 12) {
+                        // Blue pill (clock-with-ring + x)
+                        HStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .stroke(
+                                        Color.blue.opacity(0.75),
+                                        style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [2, 4])
+                                    )
+                                    .frame(width: 22, height: 22)
+                                Image(systemName: "clock")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(Color.blue.opacity(0.85))
+                            }
+
                             Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(Color.blue.opacity(0.85))
                         }
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white.opacity(0.9))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Color(red: 0.15, green: 0.35, blue: 0.65))
+                        .background(Color.blue.opacity(0.30))
                         .clipShape(Capsule())
-                        
+
                         Spacer()
-                        
+
                         if !inputText.isEmpty || conversationManager.isLoading {
                             inputActionButton
                         } else {
                             Image(systemName: "mic")
                                 .font(.system(size: 22, weight: .regular))
-                                .foregroundColor(.white.opacity(0.6))
+                                .foregroundColor(.white.opacity(0.55))
                         }
                     }
                 }
                 .padding(.horizontal, 18)
-                .padding(.vertical, 14)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity)
                 .background {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 32)
-                            .fill(.ultraThinMaterial)
-                            .opacity(0.95) // Darker/more opaque to match reference
-                        
-                        RoundedRectangle(cornerRadius: 32)
-                            .fill(Color.black.opacity(0.2)) // Tint it slightly darker
-                        
-                        // Liquid highlight - sharp top edge
-                        RoundedRectangle(cornerRadius: 32)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.3), .clear, .white.opacity(0.05)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 0.5
-                            )
-                    }
+                    RoundedRectangle(cornerRadius: 34)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 34)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
                 }
-                .cornerRadius(32)
-                .shadow(color: .black.opacity(0.4), radius: 20, x: 0, y: 10)
-                
-                // Separate Waveform Button (Solid White)
-                microphoneButton
+                .cornerRadius(34)
+                .shadow(color: .black.opacity(0.25), radius: 20, x: 0, y: 10)
+
+                // White circular waveform button on far right (per reference)
+                waveformGlassButton
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.bottom, 12)
         }
     }
 
     @ViewBuilder
-    private var microphoneButton: some View {
+    private var waveformGlassButton: some View {
         Button(action: {
             if speechRecognizer.isRecording {
                 speechRecognizer.stopRecording()
@@ -572,13 +574,29 @@ struct ChatView: View {
             }
         }) {
             Image(systemName: "waveform")
-                .font(.system(size: 22, weight: .semibold)) // Slightly bolder/larger
-                .foregroundColor(speechRecognizer.isRecording ? .red : .black) // Black icon when not recording
-                .frame(width: 52, height: 52) // Slightly larger button
-                .background(speechRecognizer.isRecording ? Color.red.opacity(0.15) : Color.white) // White background
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(speechRecognizer.isRecording ? .white : .black.opacity(0.85))
+                .frame(width: 54, height: 54)
+                .background {
+                    if speechRecognizer.isRecording {
+                        Color.red.opacity(0.9)
+                    } else {
+                        Circle().fill(Color.white.opacity(0.95))
+                    }
+                }
                 .clipShape(Circle())
-                // Removed glass overlay/stroke since it's solid white in reference
-                .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5) // Soft shadow for depth
+                .overlay(
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [.white.opacity(0.35), .clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.5
+                        )
+                )
+                .shadow(color: .black.opacity(0.25), radius: 10, x: 0, y: 6)
         }
     }
 
