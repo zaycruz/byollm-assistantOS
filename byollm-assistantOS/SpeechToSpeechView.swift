@@ -2,7 +2,7 @@
 //  SpeechToSpeechView.swift
 //  byollm-assistantOS
 //
-//  Speech-to-Speech conversation view with 3D animated orb
+//  Voice conversation interface - similar to ChatGPT Voice
 //
 
 import SwiftUI
@@ -11,277 +11,334 @@ import AVFoundation
 struct SpeechToSpeechView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var speechRecognizer = SpeechRecognizer()
-    @State private var agentState: AgentState = .idle
-    @State private var inputVolume: CGFloat = 0
-    @State private var outputVolume: CGFloat = 0
-    @State private var statusText: String = "Tap to speak"
+    @State private var isListening = false
+    @State private var isSpeaking = false
+    @State private var responseText = ""
+    @State private var inputText = ""
     @State private var audioLevelTimer: Timer?
+    @State private var waveformPhase: CGFloat = 0
     
     var body: some View {
         ZStack {
-            // Background gradient
-            backgroundGradient
+            // Background
+            Color.black.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Header
                 headerView
                 
-                Spacer()
+                Divider()
+                    .background(Color.white.opacity(0.1))
                 
-                // 3D Orb
-                orbContainer
+                // Content area - transcript/response
+                contentArea
                 
-                // Status
-                statusView
-                
-                Spacer()
-                
-                // Transcript
-                transcriptView
-                
-                // Controls
-                controlsView
+                // Bottom input bar
+                bottomBar
             }
         }
         .onAppear {
-            setupAudioLevelMonitoring()
+            startWaveformAnimation()
         }
         .onDisappear {
             cleanUp()
         }
         .onChange(of: speechRecognizer.isRecording) { _, isRecording in
-            handleRecordingStateChange(isRecording)
+            isListening = isRecording
         }
-    }
-    
-    // MARK: - Background
-    private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                Color.black,
-                Color(red: 0.05, green: 0.05, blue: 0.1),
-                Color.black
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
+        .onChange(of: speechRecognizer.transcript) { _, newTranscript in
+            if !newTranscript.isEmpty {
+                inputText = newTranscript
+            }
+        }
     }
     
     // MARK: - Header
     private var headerView: some View {
         HStack {
-            Button(action: {
-                cleanUp()
-                dismiss()
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            
-            Spacer()
-            
-            Text("Voice Mode")
+            Text("BYOLLM")
                 .font(.headline)
-                .foregroundColor(.white.opacity(0.8))
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+            
+            Text("Voice")
+                .font(.headline)
+                .foregroundColor(.white.opacity(0.5))
             
             Spacer()
-            
-            // Invisible spacer for centering
-            Color.clear
-                .frame(width: 40, height: 40)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 60)
+        .padding(.vertical, 16)
+        .padding(.top, 50)
     }
     
-    // MARK: - Orb Container
-    private var orbContainer: some View {
-        EtherealOrb(
-            agentState: agentState,
-            inputVolume: inputVolume,
-            outputVolume: outputVolume,
-            size: 220
-        )
-        .contentShape(Circle())
-        .onTapGesture {
-            toggleListening()
-        }
-    }
-    
-    // MARK: - Status View
-    private var statusView: some View {
-        VStack(spacing: 8) {
-            Text(statusText)
-                .font(.title3)
-                .fontWeight(.medium)
-                .foregroundColor(.white.opacity(0.9))
-            
-            if agentState == .listening {
-                Text("Tap orb to stop")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.5))
-            }
-        }
-        .padding(.top, 24)
-        .animation(.easeInOut(duration: 0.3), value: statusText)
-    }
-    
-    // MARK: - Transcript View
-    private var transcriptView: some View {
-        Group {
-            if !speechRecognizer.transcript.isEmpty {
-                VStack(spacing: 8) {
-                    Text("You said:")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
-                    
-                    Text(speechRecognizer.transcript)
+    // MARK: - Content Area
+    private var contentArea: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if !responseText.isEmpty {
+                    Text(responseText)
                         .font(.body)
-                        .foregroundColor(.white.opacity(0.8))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(4)
-                        .padding(.horizontal, 40)
+                        .foregroundColor(.white)
+                        .lineSpacing(6)
+                    
+                    // Action buttons row
+                    HStack(spacing: 16) {
+                        actionButton(icon: "doc.on.doc")
+                        actionButton(icon: "speaker.wave.2.fill")
+                        actionButton(icon: "hand.thumbsup")
+                        actionButton(icon: "hand.thumbsdown")
+                        actionButton(icon: "square.and.arrow.up")
+                        Spacer()
+                    }
+                    .padding(.top, 8)
+                } else if isListening {
+                    HStack {
+                        ListeningIndicator()
+                        Text("Listening...")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                } else if isSpeaking {
+                    HStack {
+                        SpeakingIndicator()
+                        Text("Speaking...")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                } else {
+                    Text("Tap the microphone to start speaking")
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.4))
                 }
-                .padding(.vertical, 20)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .animation(.easeInOut(duration: 0.3), value: speechRecognizer.transcript)
+        .frame(maxHeight: .infinity)
     }
     
-    // MARK: - Controls View
-    private var controlsView: some View {
-        HStack(spacing: 60) {
-            // Mute button (placeholder)
-            Button(action: {
-                // Toggle mute
-            }) {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.title3)
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 50, height: 50)
+    private func actionButton(icon: String) -> some View {
+        Button(action: {}) {
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundColor(.white.opacity(0.5))
+        }
+    }
+    
+    // MARK: - Bottom Bar
+    private var bottomBar: some View {
+        HStack(spacing: 12) {
+            // Plus button
+            Button(action: {}) {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                    .frame(width: 44, height: 44)
                     .background(Color.white.opacity(0.1))
                     .clipShape(Circle())
             }
             
-            // End call button
-            Button(action: {
-                cleanUp()
-                dismiss()
-            }) {
-                Image(systemName: "phone.down.fill")
-                    .font(.title2)
+            // Text input field
+            HStack {
+                TextField("Type", text: $inputText)
+                    .font(.body)
                     .foregroundColor(.white)
-                    .frame(width: 64, height: 64)
-                    .background(Color.red)
+                    .accentColor(.white)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(22)
+            
+            // Camera/video button
+            Button(action: {}) {
+                Image(systemName: "video.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white.opacity(0.6))
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.1))
                     .clipShape(Circle())
             }
             
-            // Settings button (placeholder)
-            Button(action: {
-                // Open settings
-            }) {
-                Image(systemName: "ellipsis")
-                    .font(.title3)
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 50, height: 50)
-                    .background(Color.white.opacity(0.1))
+            // Microphone button
+            Button(action: { toggleListening() }) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(isListening ? .white : .white.opacity(0.6))
+                    .frame(width: 44, height: 44)
+                    .background(isListening ? Color.blue : Color.white.opacity(0.1))
                     .clipShape(Circle())
+            }
+            
+            // End/Send button
+            Button(action: { endOrSend() }) {
+                HStack(spacing: 6) {
+                    if isListening {
+                        // Animated waveform
+                        WaveformIndicator(isActive: true)
+                            .frame(width: 20, height: 16)
+                    }
+                    Text(isListening ? "End" : "Send")
+                        .font(.system(size: 15, weight: .medium))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+                .background(Color(red: 0.3, green: 0.75, blue: 0.95))
+                .cornerRadius(22)
             }
         }
-        .padding(.bottom, 50)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .padding(.bottom, 30)
     }
     
     // MARK: - Actions
     private func toggleListening() {
         if speechRecognizer.isRecording {
-            stopListeningAndProcess()
+            speechRecognizer.stopRecording()
+            isListening = false
         } else {
-            startListening()
+            speechRecognizer.startRecording()
+            isListening = true
+            responseText = ""
         }
     }
     
-    private func startListening() {
-        speechRecognizer.startRecording()
-        agentState = .listening
-        statusText = "Listening..."
+    private func endOrSend() {
+        if isListening {
+            // End recording and process
+            speechRecognizer.stopRecording()
+            isListening = false
+            
+            if !inputText.isEmpty {
+                processInput()
+            }
+        } else if !inputText.isEmpty {
+            // Send typed text
+            processInput()
+        }
     }
     
-    private func stopListeningAndProcess() {
-        speechRecognizer.stopRecording()
+    private func processInput() {
+        let userInput = inputText
+        inputText = ""
+        isSpeaking = true
         
-        if !speechRecognizer.transcript.isEmpty {
-            agentState = .thinking
-            statusText = "Thinking..."
-            inputVolume = 0
+        // TODO: Send to LLM API and get response
+        // For now, simulate a response
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            // Simulate typing effect
+            let simulatedResponse = "This is a simulated response. In production, this would be the actual response from your LLM, streamed in real-time with text-to-speech audio playback."
             
-            // TODO: Send transcript to LLM and get audio response
-            // Simulating processing time
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                self.agentState = .talking
-                self.statusText = "Speaking..."
-                
-                // Simulate speaking with random volume changes
-                self.simulateSpeaking()
-            }
-        } else {
-            agentState = .idle
-            statusText = "Tap to speak"
+            typeText(simulatedResponse)
         }
     }
     
-    private func simulateSpeaking() {
-        // Simulate output volume changes while "speaking"
-        var speakingTime: Double = 0
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
-            speakingTime += 0.1
-            
-            // Random volume fluctuation
-            withAnimation(.easeOut(duration: 0.1)) {
-                self.outputVolume = CGFloat.random(in: 0.3...0.8)
-            }
-            
-            // Stop after 3 seconds
-            if speakingTime >= 3.0 {
+    private func typeText(_ text: String) {
+        responseText = ""
+        var charIndex = 0
+        
+        Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { timer in
+            if charIndex < text.count {
+                let index = text.index(text.startIndex, offsetBy: charIndex)
+                responseText += String(text[index])
+                charIndex += 1
+            } else {
                 timer.invalidate()
-                withAnimation {
-                    self.outputVolume = 0
-                    self.agentState = .idle
-                    self.statusText = "Tap to speak"
-                }
+                isSpeaking = false
             }
         }
     }
     
-    private func handleRecordingStateChange(_ isRecording: Bool) {
-        if isRecording {
-            agentState = .listening
-            statusText = "Listening..."
-        }
-    }
-    
-    private func setupAudioLevelMonitoring() {
-        // Monitor audio levels when recording
-        audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-            // Check if we're in listening state (UI state reflects recording)
-            guard agentState == .listening else { return }
-            // Simulate volume based on transcript changes
-            // In production, you'd get actual audio levels from AVAudioEngine
-            withAnimation(.easeOut(duration: 0.05)) {
-                inputVolume = CGFloat.random(in: 0.2...0.9)
+    private func startWaveformAnimation() {
+        Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            withAnimation(.linear(duration: 0.05)) {
+                waveformPhase += 0.1
             }
         }
     }
     
     private func cleanUp() {
         audioLevelTimer?.invalidate()
-        audioLevelTimer = nil
         speechRecognizer.stopRecording()
+    }
+}
+
+// MARK: - Waveform Indicator
+struct WaveformIndicator: View {
+    let isActive: Bool
+    @State private var phase: CGFloat = 0
+    
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<5, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.black)
+                    .frame(width: 2, height: barHeight(for: index))
+                    .animation(.easeInOut(duration: 0.15), value: phase)
+            }
+        }
+        .onAppear {
+            if isActive {
+                startAnimation()
+            }
+        }
+    }
+    
+    private func barHeight(for index: Int) -> CGFloat {
+        let baseHeight: CGFloat = 8
+        let variation = sin(phase + CGFloat(index) * 0.8) * 6
+        return max(4, baseHeight + variation)
+    }
+    
+    private func startAnimation() {
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            phase += 0.5
+        }
+    }
+}
+
+// MARK: - Listening Indicator
+struct ListeningIndicator: View {
+    @State private var scale: CGFloat = 1.0
+    
+    var body: some View {
+        Circle()
+            .fill(Color.blue)
+            .frame(width: 12, height: 12)
+            .scaleEffect(scale)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    scale = 1.3
+                }
+            }
+    }
+}
+
+// MARK: - Speaking Indicator
+struct SpeakingIndicator: View {
+    @State private var opacity: Double = 0.5
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 8, height: 8)
+                    .opacity(opacity)
+                    .animation(
+                        .easeInOut(duration: 0.4)
+                        .repeatForever(autoreverses: true)
+                        .delay(Double(index) * 0.15),
+                        value: opacity
+                    )
+            }
+        }
+        .onAppear {
+            opacity = 1.0
+        }
     }
 }
 
