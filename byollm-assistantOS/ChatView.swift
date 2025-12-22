@@ -86,11 +86,13 @@ struct ChatView: View {
         var colors: [Color] {
             switch self {
             case .obsidian:
-                // Dark, high-contrast gradient with subtle depth (matches the logo vibe)
+                // Smooth dark gradient with subtle depth
                 return [
-                    Color(red: 0.12, green: 0.12, blue: 0.14), // charcoal top
-                    Color(red: 0.05, green: 0.06, blue: 0.07), // deep slate mid
-                    Color(red: 0.01, green: 0.01, blue: 0.02)  // near-black bottom
+                    Color(red: 0.08, green: 0.08, blue: 0.10),
+                    Color(red: 0.06, green: 0.06, blue: 0.08),
+                    Color(red: 0.04, green: 0.04, blue: 0.06),
+                    Color(red: 0.03, green: 0.03, blue: 0.04),
+                    Color(red: 0.02, green: 0.02, blue: 0.03)
                 ]
             case .ocean:
                 return [Color(red: 0.2, green: 0.4, blue: 0.35), Color(red: 0.15, green: 0.45, blue: 0.5)]
@@ -356,19 +358,6 @@ struct ChatView: View {
                         isInputFocused = false
                     }
                     
-                    // Subtle background glow to enhance glass refraction
-                    VStack {
-                        Spacer()
-                        RadialGradient(
-                            colors: [Color.white.opacity(0.05), Color.clear],
-                            center: .bottom,
-                            startRadius: 0,
-                            endRadius: 400
-                        )
-                        .frame(height: 300)
-                        .ignoresSafeArea()
-                    }
-                    .allowsHitTesting(false)
                     
                     VStack(spacing: 0) {
                         topBar
