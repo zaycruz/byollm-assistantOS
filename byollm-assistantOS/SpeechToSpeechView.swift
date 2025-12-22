@@ -101,13 +101,12 @@ struct SpeechToSpeechView: View {
     
     // MARK: - Orb Container
     private var orbContainer: some View {
-        AnimatedOrb(
+        EtherealOrb(
             agentState: agentState,
             inputVolume: inputVolume,
             outputVolume: outputVolume,
-            size: 240
+            size: 220
         )
-        .frame(width: 280, height: 280)
         .contentShape(Circle())
         .onTapGesture {
             toggleListening()
