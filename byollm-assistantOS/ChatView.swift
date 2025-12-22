@@ -696,7 +696,7 @@ struct ChatView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.black)
                     .frame(width: 40, height: 40)
-                    .background(Color.green)
+                    .background(Color.white)
                     .clipShape(Circle())
             }
         }
