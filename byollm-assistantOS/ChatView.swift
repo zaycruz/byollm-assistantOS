@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @StateObject private var conversationManager = ConversationManager()
@@ -25,6 +27,14 @@ struct ChatView: View {
     @State private var safetyLevel: SafetyLevel = .medium
     @State private var reasoningEffort: ReasoningEffort = .medium
     @State private var provider: Provider = .local
+    
+    // Attachment states
+    @State private var showAttachmentOptions = false
+    @State private var showImagePicker = false
+    @State private var showCamera = false
+    @State private var showFilePicker = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedImage: UIImage?
     
     // Computed property for current available models based on provider
     private var currentAvailableModels: [String] {
@@ -367,6 +377,41 @@ struct ChatView: View {
             .sheet(isPresented: $showSidePanel) {
                 sheetContent
             }
+            .confirmationDialog("Add Attachment", isPresented: $showAttachmentOptions, titleVisibility: .visible) {
+                Button("Photo Library") {
+                    showImagePicker = true
+                }
+                Button("Take Photo") {
+                    showCamera = true
+                }
+                Button("Choose File") {
+                    showFilePicker = true
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+            .photosPicker(isPresented: $showImagePicker, selection: $selectedPhotoItem, matching: .images)
+            .onChange(of: selectedPhotoItem) { oldValue, newValue in
+                Task {
+                    if let newValue = newValue,
+                       let data = try? await newValue.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        selectedImage = image
+                        // TODO: Handle image attachment to message
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraView(image: $selectedImage)
+            }
+            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
+                switch result {
+                case .success(let url):
+                    // TODO: Handle file attachment
+                    print("Selected file: \(url)")
+                case .failure(let error):
+                    print("File selection error: \(error)")
+                }
+            }
         }
     }
     
@@ -494,8 +539,8 @@ struct ChatView: View {
                 
                 // Bottom Buttons Row
                 HStack(spacing: 12) {
-                    // Plus button
-                    Button(action: {}) {
+                    // Plus button - attachment options
+                    Button(action: { showAttachmentOptions = true }) {
                         Image(systemName: "plus")
                             .font(.system(size: 20, weight: .regular))
                             .foregroundColor(.white)
@@ -503,13 +548,24 @@ struct ChatView: View {
                     
                     Spacer()
                     
-                    // Mic icon (or send button when typing)
+                    // Mic icon (STT) or send button when typing
                     if !inputText.isEmpty || conversationManager.isLoading {
                         inputActionButton
                     } else {
-                        Image(systemName: "mic")
-                            .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
+                        Button(action: {
+                            if speechRecognizer.isRecording {
+                                speechRecognizer.stopRecording()
+                                if !speechRecognizer.transcript.isEmpty {
+                                    inputText = speechRecognizer.transcript
+                                }
+                            } else {
+                                speechRecognizer.startRecording()
+                            }
+                        }) {
+                            Image(systemName: speechRecognizer.isRecording ? "mic.fill" : "mic")
+                                .font(.system(size: 20, weight: .regular))
+                                .foregroundColor(speechRecognizer.isRecording ? .red : .white.opacity(0.5))
+                        }
                     }
                     
                     // Waveform button (inside glass, on the right)
@@ -2135,6 +2191,44 @@ struct NavItem: View {
                 }
             }
         )
+    }
+}
+
+// MARK: - Camera View
+struct CameraView: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    @Environment(\.dismiss) var dismiss
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraView
+        
+        init(_ parent: CameraView) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let uiImage = info[.originalImage] as? UIImage {
+                parent.image = uiImage
+            }
+            parent.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
     }
 }
 
