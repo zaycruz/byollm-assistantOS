@@ -6,3 +6,4 @@ def test_main_runs(capsys):
     captured = capsys.readouterr()
     assert "Hello from byollm-assistantos!" in captured.out
 
+
