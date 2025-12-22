@@ -20,6 +20,7 @@ struct SettingsView: View {
     @Binding var selectedModel: String
     @Binding var availableModels: [String]
     @Binding var cloudModels: [String]
+    @Binding var reasoningEffort: ChatView.ReasoningEffort
     @State private var showingDeleteAlert = false
     @State private var isLoadingModels = false
     @State private var showingPersonalization = false
@@ -315,6 +316,54 @@ struct SettingsView: View {
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                         .padding(.leading, 40)
+                                    
+                                    // Reasoning Effort Picker (only for GPT-oss models)
+                                    if supportsReasoningEffort {
+                                        Divider()
+                                            .background(Color.white.opacity(0.2))
+                                        
+                                        HStack(spacing: 16) {
+                                            Image(systemName: "brain.head.profile")
+                                                .font(.title3)
+                                                .foregroundColor(.white)
+                                                .frame(width: 24)
+                                            
+                                            Text("Reasoning Effort")
+                                                .foregroundColor(.white)
+                                                .font(.body)
+                                            
+                                            Spacer()
+                                            
+                                            Menu {
+                                                ForEach(ChatView.ReasoningEffort.allCases, id: \.self) { effort in
+                                                    Button(action: {
+                                                        reasoningEffort = effort
+                                                    }) {
+                                                        HStack {
+                                                            Text(effort.rawValue.capitalized)
+                                                            if reasoningEffort == effort {
+                                                                Image(systemName: "checkmark")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } label: {
+                                                HStack(spacing: 6) {
+                                                    Text(reasoningEffort.rawValue.capitalized)
+                                                        .foregroundColor(.white.opacity(0.7))
+                                                        .font(.body)
+                                                    Image(systemName: "chevron.up.chevron.down")
+                                                        .font(.caption2)
+                                                        .foregroundColor(.white.opacity(0.5))
+                                                }
+                                            }
+                                        }
+                                        
+                                        Text("Controls depth of model reasoning (low/medium/high)")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                            .padding(.leading, 40)
+                                    }
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 16)
@@ -452,6 +501,15 @@ struct SettingsView: View {
     
     private var currentModels: [String] {
         provider == .cloud ? cloudModels : availableModels
+    }
+    
+    private var supportsReasoningEffort: Bool {
+        let modelLower = selectedModel.lowercased()
+        return modelLower.contains("gpt-oss") || 
+               modelLower.contains("gpt-o") || 
+               modelLower.contains("gpt-4o") || 
+               modelLower.contains("o1") || 
+               modelLower.contains("o3")
     }
     
     private func formatModelName(_ modelName: String) -> String {

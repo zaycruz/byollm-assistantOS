@@ -340,6 +340,7 @@ struct ChatView: View {
                         selectedModel: $selectedModel,
                         availableModels: $availableModels,
                         cloudModels: $cloudModels,
+                        reasoningEffort: $reasoningEffort,
                         isInSidePanel: false,
                         onBack: {
                             showSidePanel = false
@@ -1063,6 +1064,7 @@ struct SidePanelContainerView: View {
     @Binding var selectedModel: String
     @Binding var availableModels: [String]
     @Binding var cloudModels: [String]
+    @Binding var reasoningEffort: ChatView.ReasoningEffort
     @Binding var currentView: SidePanelContentView
     @Binding var isPresented: Bool
     
@@ -1095,6 +1097,7 @@ struct SidePanelContainerView: View {
                     selectedModel: $selectedModel,
                     availableModels: $availableModels,
                     cloudModels: $cloudModels,
+                    reasoningEffort: $reasoningEffort,
                     isInSidePanel: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.3)) {
