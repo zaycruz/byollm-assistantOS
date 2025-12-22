@@ -15,25 +15,20 @@ struct byollm_assistantOSTests {
         // Write your test here and use APIs like `#expect(...)` to check expected conditions.
     }
     
-    @Test func personalizationSystemPrompt_includesAboutMeAndInstructions() async throws {
+    @Test func personalizationSystemPrompt_includesUserInfoAndPreferences() async throws {
         let settings = PersonalizationSettings(
-            baseStyle: .nerdy,
-            customInstructions: "Be direct.\nPrefer bullets.",
-            occupation: "Engineer",
-            moreAboutYou: "I like writing code in Python."
+            fullName: "John Doe",
+            nickname: "JD",
+            personalPreferences: "Push me to be better. Always reference other chats."
         )
         
         let prompt = settings.systemPrompt()
         
-        #expect(prompt.contains("Style: Nerdy"))
-        #expect(prompt.contains("Instructions:"))
-        #expect(prompt.contains("Be direct."))
-        #expect(prompt.contains("About me:"))
-        #expect(prompt.contains("Occupation: Engineer"))
-        #expect(prompt.contains("I like writing code in Python."))
-        
-        // Regression: nickname removed
-        #expect(!prompt.lowercased().contains("nickname"))
+        #expect(prompt.contains("About the user:"))
+        #expect(prompt.contains("Name: John Doe"))
+        #expect(prompt.contains("Nickname: JD"))
+        #expect(prompt.contains("User preferences:"))
+        #expect(prompt.contains("Push me to be better"))
     }
     
     @Test func personalizationStore_roundTripPersists() async throws {
@@ -43,10 +38,9 @@ struct byollm_assistantOSTests {
         
         let store = PersonalizationStore(defaults: defaults)
         let original = PersonalizationSettings(
-            baseStyle: .candid,
-            customInstructions: "Always be concise.",
-            occupation: "Student",
-            moreAboutYou: "Interested in ML."
+            fullName: "Test User",
+            nickname: "Tester",
+            personalPreferences: "Always be concise."
         )
         
         store.save(original)
