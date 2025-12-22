@@ -693,17 +693,29 @@ struct ChatView: View {
         isVoiceModeActive = true
         
         // Set up silence detection callback
-        audioRecorder.onSilenceDetected = { [self] in
+        audioRecorder.onSilenceDetected = {
             // Auto-process when silence detected
             processVoiceInput()
         }
         
+        // Set up callback for when TTS finishes
+        voiceService.onSpeakingFinished = {
+            resumeListeningAfterResponse()
+        }
+        
+        startListening()
+    }
+    
+    private func startListening() {
+        guard isVoiceModeActive else { return }
         audioRecorder.startRecording()
     }
     
     private func endVoiceMode() {
         isVoiceModeActive = false
+        shouldSpeakNextResponse = false
         audioRecorder.onSilenceDetected = nil
+        voiceService.onSpeakingFinished = nil
         audioRecorder.cancelRecording()
         voiceService.stopSpeaking()
     }
@@ -714,9 +726,7 @@ struct ChatView: View {
         // Get the recorded audio
         guard let audioData = audioRecorder.stopRecording() else {
             // Resume listening if still in voice mode
-            if isVoiceModeActive {
-                audioRecorder.startRecording()
-            }
+            startListening()
             return
         }
         
@@ -726,20 +736,21 @@ struct ChatView: View {
                 let transcript = try await voiceService.transcribe(audioData: audioData)
                 
                 await MainActor.run {
-                    if !transcript.isEmpty {
+                    if !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         inputText = transcript
                         shouldSpeakNextResponse = true
                         sendMessage()
+                        // Note: resumeListeningAfterResponse will be called via onSpeakingFinished
                     } else {
                         // No speech detected, resume listening
-                        resumeListeningAfterResponse()
+                        startListening()
                     }
                 }
             } catch {
                 print("Voice transcription error: \(error)")
                 await MainActor.run {
                     // Resume listening even on error
-                    resumeListeningAfterResponse()
+                    startListening()
                 }
             }
         }
@@ -748,10 +759,10 @@ struct ChatView: View {
     private func resumeListeningAfterResponse() {
         guard isVoiceModeActive else { return }
         
-        // Small delay before resuming
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if self.isVoiceModeActive && !self.voiceService.isSpeaking {
-                self.audioRecorder.startRecording()
+        // Small delay before resuming to avoid picking up speaker audio
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if isVoiceModeActive && !voiceService.isSpeaking && !conversationManager.isLoading {
+                startListening()
             }
         }
     }
@@ -808,17 +819,21 @@ struct ChatView: View {
                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
                 }
                 
+                await MainActor.run {
+                    shouldSpeakNextResponse = false
+                }
+                
                 // Get the last AI message and speak it
+                // onSpeakingFinished callback will trigger resumeListeningAfterResponse
                 if let lastMessage = conversationManager.currentConversation.messages.last,
                    !lastMessage.isUser,
                    !lastMessage.content.isEmpty {
                     await voiceService.speak(text: lastMessage.content)
-                }
-                
-                await MainActor.run {
-                    shouldSpeakNextResponse = false
-                    // Resume listening after speaking (continuous conversation)
-                    resumeListeningAfterResponse()
+                } else {
+                    // No message to speak, resume listening directly
+                    await MainActor.run {
+                        resumeListeningAfterResponse()
+                    }
                 }
             }
         }

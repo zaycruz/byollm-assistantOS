@@ -215,8 +215,11 @@ class VoiceService: ObservableObject {
     
     // MARK: - Audio Playback
     
-    func speak(text: String) async {
-        guard !text.isEmpty else { return }
+    func speak(text: String, completion: (() -> Void)? = nil) async {
+        guard !text.isEmpty else { 
+            completion?()
+            return 
+        }
         
         await MainActor.run { isSpeaking = true }
         
@@ -227,21 +230,35 @@ class VoiceService: ObservableObject {
             print("TTS error: \(error)")
         }
         
-        await MainActor.run { isSpeaking = false }
+        await MainActor.run { 
+            isSpeaking = false
+            onSpeakingFinished?()
+        }
+        completion?()
     }
     
+    private var audioPlayerDelegate: AudioPlayerDelegateHandler?
+    var onSpeakingFinished: (() -> Void)?
+    
     func playAudio(data: Data) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            do {
-                audioPlayer = try AVAudioPlayer(data: data)
-                audioPlayer?.delegate = AudioPlayerDelegate { [weak self] in
-                    self?.audioPlayer = nil
-                    continuation.resume()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.main.async {
+                do {
+                    self.audioPlayer = try AVAudioPlayer(data: data)
+                    self.audioPlayerDelegate = AudioPlayerDelegateHandler { [weak self] in
+                        self?.audioPlayer = nil
+                        self?.audioPlayerDelegate = nil
+                        continuation.resume()
+                    }
+                    self.audioPlayer?.delegate = self.audioPlayerDelegate
+                    self.audioPlayer?.prepareToPlay()
+                    
+                    if self.audioPlayer?.play() != true {
+                        continuation.resume(throwing: VoiceError.audioPlaybackFailed)
+                    }
+                } catch {
+                    continuation.resume(throwing: VoiceError.audioPlaybackFailed)
                 }
-                audioPlayer?.prepareToPlay()
-                audioPlayer?.play()
-            } catch {
-                continuation.resume(throwing: VoiceError.audioPlaybackFailed)
             }
         }
     }
@@ -249,21 +266,29 @@ class VoiceService: ObservableObject {
     func stopSpeaking() {
         audioPlayer?.stop()
         audioPlayer = nil
+        audioPlayerDelegate = nil
         isSpeaking = false
     }
 }
 
 // MARK: - Audio Player Delegate Helper
 
-private class AudioPlayerDelegate: NSObject, AVAudioPlayerDelegate {
-    let completion: () -> Void
+private class AudioPlayerDelegateHandler: NSObject, AVAudioPlayerDelegate {
+    private var completion: (() -> Void)?
     
     init(completion: @escaping () -> Void) {
         self.completion = completion
+        super.init()
     }
     
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        completion()
+        completion?()
+        completion = nil
+    }
+    
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        completion?()
+        completion = nil
     }
 }
 
