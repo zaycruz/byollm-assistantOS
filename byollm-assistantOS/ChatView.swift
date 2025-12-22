@@ -501,18 +501,6 @@ struct ChatView: View {
                             .foregroundColor(.white)
                     }
                     
-                    // Blue Pill
-                    HStack(spacing: 10) {
-                        Image(systemName: "clock.arrow.circlepath")
-                        Image(systemName: "xmark")
-                    }
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.blue)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.blue.opacity(0.2))
-                    .clipShape(Capsule())
-                    
                     Spacer()
                     
                     // Mic icon (or send button when typing)
