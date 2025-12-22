@@ -78,3 +78,4 @@ struct PersonalizationStore {
         defaults.set(settings.systemPrompt(), forKey: Keys.legacySystemPrompt)
     }
 }
+

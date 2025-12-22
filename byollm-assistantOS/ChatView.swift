@@ -805,86 +805,94 @@ struct MessagesListView: View {
     let fontStyle: ChatView.FontStyle
     let isLoading: Bool
     @FocusState.Binding var isInputFocused: Bool
-    @State private var showScrollToBottom = true  // Show by default for continuing conversations
     @State private var scrollProxy: ScrollViewProxy?
-    @State private var isNearBottom = true
-    
+    @State private var scrollOffset: CGFloat = 0
+    @State private var contentHeight: CGFloat = 0
+    @State private var viewHeight: CGFloat = 0
+
+    private var showScrollButton: Bool {
+        // Show button if we have messages and scrolled up more than 150 points
+        messages.count > 1 && scrollOffset > 150
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
-            ScrollView {
-                ScrollViewReader { proxy in
-                    LazyVStack(spacing: 20) {
-                        ForEach(messages) { message in
-                            MessageBubble(message: message, fontStyle: fontStyle)
-                                .id(message.id)
+            GeometryReader { outerGeo in
+                ScrollView {
+                    ScrollViewReader { proxy in
+                        LazyVStack(spacing: 20) {
+                            ForEach(messages) { message in
+                                MessageBubble(message: message, fontStyle: fontStyle)
+                                    .id(message.id)
+                            }
+                            
+                            // Show "Thinking..." text when loading and last message is empty
+                            if isLoading && (messages.last?.content.isEmpty ?? true) {
+                                ThinkingIndicator(fontStyle: fontStyle)
+                                    .id("thinking-indicator")
+                            }
                         }
-                        
-                        // Show "Thinking..." text when loading and last message is empty
-                        if isLoading && (messages.last?.content.isEmpty ?? true) {
-                            ThinkingIndicator(fontStyle: fontStyle)
-                                .id("thinking-indicator")
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 20)
+                        .background(
+                            GeometryReader { contentGeo in
+                                Color.clear
+                                    .preference(key: ScrollOffsetKey.self, value: contentGeo.frame(in: .named("scroll")).minY)
+                                    .onAppear {
+                                        contentHeight = contentGeo.size.height
+                                    }
+                                    .onChange(of: contentGeo.size.height) { _, newHeight in
+                                        contentHeight = newHeight
+                                    }
+                            }
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isInputFocused = false
                         }
-                        
-                        // Bottom anchor for scroll detection
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(key: BottomVisiblePreferenceKey.self, 
-                                           value: geo.frame(in: .global).minY)
+                        .onAppear {
+                            scrollProxy = proxy
+                            viewHeight = outerGeo.size.height
+                            // Scroll to bottom on initial load
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                if let lastMessage = messages.last {
+                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                }
+                            }
                         }
-                        .frame(height: 1)
-                        .id("bottom-anchor")
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 20)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        isInputFocused = false
-                    }
-                    .onAppear {
-                        scrollProxy = proxy
-                        // Scroll to bottom on initial load
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        .onChange(of: messages.count) { oldValue, newValue in
                             if let lastMessage = messages.last {
-                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                withAnimation {
+                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                }
                             }
                         }
-                    }
-                    .onChange(of: messages.count) { oldValue, newValue in
-                        if let lastMessage = messages.last {
-                            withAnimation {
-                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                            }
-                            isNearBottom = true
-                        }
-                    }
-                    .onChange(of: isLoading) { oldValue, newValue in
-                        if newValue {
-                            withAnimation {
-                                proxy.scrollTo("thinking-indicator", anchor: .bottom)
+                        .onChange(of: isLoading) { oldValue, newValue in
+                            if newValue {
+                                withAnimation {
+                                    proxy.scrollTo("thinking-indicator", anchor: .bottom)
+                                }
                             }
                         }
                     }
                 }
-            }
-            .onPreferenceChange(BottomVisiblePreferenceKey.self) { bottomY in
-                // Get screen height and check if bottom anchor is visible
-                let screenHeight = UIScreen.main.bounds.height
-                let newIsNearBottom = bottomY < screenHeight + 100
-                if newIsNearBottom != isNearBottom {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isNearBottom = newIsNearBottom
-                    }
+                .coordinateSpace(name: "scroll")
+                .onPreferenceChange(ScrollOffsetKey.self) { offset in
+                    // Calculate how far from bottom we are
+                    // offset is negative when scrolled up
+                    let maxOffset = contentHeight - outerGeo.size.height
+                    let distanceFromBottom = maxOffset + offset
+                    scrollOffset = max(0, distanceFromBottom)
                 }
             }
             
-            // Scroll to bottom button - show when not near bottom and have messages
-            if !isNearBottom && messages.count > 2 {
+            // Scroll to bottom button
+            if showScrollButton {
                 Button(action: {
                     if let lastMessage = messages.last {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
                         }
-                        isNearBottom = true
                     }
                 }) {
                     Image(systemName: "arrow.down")
@@ -901,12 +909,13 @@ struct MessagesListView: View {
                 }
                 .padding(.bottom, 24)
                 .transition(.scale.combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: showScrollButton)
             }
         }
     }
 }
 
-struct BottomVisiblePreferenceKey: PreferenceKey {
+struct ScrollOffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
