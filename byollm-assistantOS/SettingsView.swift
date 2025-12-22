@@ -89,8 +89,12 @@ struct SettingsView: View {
                                     .clipShape(Circle())
                             }
                         } else {
-                            Spacer()
+                            // Invisible spacer to balance the X button
+                            Color.clear
+                                .frame(width: 44, height: 44)
                         }
+                        
+                        Spacer()
                         
                         Text("Settings")
                             .font(.title2)
@@ -113,8 +117,8 @@ struct SettingsView: View {
                                 .background(Color.white.opacity(0.1))
                                 .clipShape(Circle())
                         }
-                        .padding(.trailing, 20)
                     }
+                    .padding(.horizontal, 16)
                     .padding(.top, 20)
                     .padding(.bottom, 30)
                 
