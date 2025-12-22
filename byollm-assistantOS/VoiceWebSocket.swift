@@ -24,6 +24,7 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     private var webSocket: URLSessionWebSocketTask?
     private var audioEngine = AVAudioEngine()
     private var inputNode: AVAudioInputNode { audioEngine.inputNode }
+    private var hasTapInstalled = false
     
     // Playback
     private var playbackEngine = AVAudioEngine()
@@ -158,6 +159,12 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     // MARK: - Audio Capture (PCM16 mono 16kHz)
     
     private func startAudioCapture() {
+        // Don't install if already capturing
+        guard !hasTapInstalled else {
+            print("[WS] Tap already installed, skipping")
+            return
+        }
+        
         // Get the native format
         let nativeFormat = inputNode.outputFormat(forBus: 0)
         
@@ -182,6 +189,7 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
             self?.processAudioBuffer(buffer, converter: converter, targetFormat: targetFormat)
         }
+        hasTapInstalled = true
         
         do {
             try audioEngine.start()
@@ -244,8 +252,20 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     }
     
     private func stopAudioCapture() {
+        guard hasTapInstalled else {
+            print("[WS] No tap to remove")
+            return
+        }
+        
+        // Stop engine first
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        
+        // Remove tap
         inputNode.removeTap(onBus: 0)
-        audioEngine.stop()
+        hasTapInstalled = false
+        
         audioLevel = 0
         print("[WS] Audio capture stopped")
     }
