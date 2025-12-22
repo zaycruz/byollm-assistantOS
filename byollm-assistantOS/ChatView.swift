@@ -37,7 +37,7 @@ struct ChatView: View {
     @State private var selectedImage: UIImage?
     
     // Speech-to-Speech (S2S) state
-    @State private var isS2SActive = false
+    @State private var showS2SView = false
     
     // Computed property for current available models based on provider
     private var currentAvailableModels: [String] {
@@ -406,6 +406,9 @@ struct ChatView: View {
             .fullScreenCover(isPresented: $showCamera) {
                 CameraView(image: $selectedImage)
             }
+            .fullScreenCover(isPresented: $showS2SView) {
+                SpeechToSpeechView()
+            }
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
                 switch result {
                 case .success(let url):
@@ -652,27 +655,19 @@ struct ChatView: View {
     @ViewBuilder
     private var speechToSpeechButton: some View {
         Button(action: {
-            isS2SActive.toggle()
-            if isS2SActive {
-                // Start S2S session
-                // TODO: Implement real-time voice conversation with model
-                print("S2S mode activated")
-            } else {
-                // Stop S2S session
-                print("S2S mode deactivated")
-            }
+            showS2SView = true
         }) {
             Image(systemName: "waveform")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(isS2SActive ? .white : .black)
+                .foregroundColor(.black)
                 .frame(width: 40, height: 40)
                 .background(
                     Circle()
-                        .fill(isS2SActive ? Color.green : Color.white)
+                        .fill(Color.white)
                 )
                 .overlay(
                     Circle()
-                        .stroke(isS2SActive ? Color.green.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 0.5)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
                 )
         }
     }
