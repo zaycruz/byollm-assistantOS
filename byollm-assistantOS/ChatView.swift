@@ -460,9 +460,10 @@ struct ChatView: View {
     
     private var chatInputArea: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                // Text Input Area (Top)
-                HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .bottom, spacing: 12) {
+                // Main Glass Container
+                VStack(alignment: .leading, spacing: 10) {
+                    // Text Input Area
                     ZStack(alignment: .topLeading) {
                         if inputText.isEmpty {
                             Text("Ask anything")
@@ -483,6 +484,8 @@ struct ChatView: View {
                             .padding(.horizontal, -4)
                             .padding(.vertical, -8)
                             .disabled(conversationManager.isLoading)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.sentences)
                             .onChange(of: inputText) { oldValue, newValue in
                                 if newValue.count > 10000 {
                                     inputText = String(newValue.prefix(10000))
@@ -491,83 +494,65 @@ struct ChatView: View {
                             }
                     }
                     
-                    if !inputText.isEmpty || conversationManager.isLoading {
-                        inputActionButton
-                            .padding(.bottom, 2)
-                    }
-                }
-                
-                // Bottom Buttons Row
-                HStack(spacing: 20) {
-                    Button(action: {}) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 22) {
-                        Image(systemName: "mic")
-                            .font(.system(size: 19, weight: .regular))
-                            .foregroundColor(.white.opacity(0.6))
+                    // Bottom Buttons Row (Inside Glass)
+                    HStack(spacing: 16) {
+                        Button(action: {}) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .regular))
+                                .foregroundColor(.white)
+                        }
                         
-                        microphoneButton
+                        // Blue Pill (Placeholder for secondary actions to match reference)
+                        HStack(spacing: 12) {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Image(systemName: "xmark")
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.blue.opacity(0.8))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.15))
+                        .clipShape(Capsule())
+                        
+                        Spacer()
+                        
+                        if !inputText.isEmpty || conversationManager.isLoading {
+                            inputActionButton
+                        } else {
+                            Image(systemName: "mic")
+                                .font(.system(size: 19, weight: .regular))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
                     }
                 }
-                .padding(.bottom, 2)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .background {
-                ZStack {
-                    // This adds the "liquid" lift - a subtle white glow inside the material
-                    RoundedRectangle(cornerRadius: 32)
-                        .fill(Color.white.opacity(0.05))
-                    
-                    // The main blur
-                    RoundedRectangle(cornerRadius: 32)
-                        .fill(.ultraThinMaterial)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .background {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 32)
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.8)
+                        
+                        // Liquid highlight - sharp top edge
+                        RoundedRectangle(cornerRadius: 32)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.4), .clear, .white.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.5
+                            )
+                    }
                 }
+                .cornerRadius(32)
+                .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
+                
+                // Separate Waveform Button (matching the right side of your reference)
+                microphoneButton
             }
-            .cornerRadius(32)
-            .overlay(
-                RoundedRectangle(cornerRadius: 32)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(0.25),
-                                .white.opacity(0.05),
-                                .clear,
-                                .white.opacity(0.05),
-                                .white.opacity(0.15)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 10)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
-        }
-    }
-
-    @ViewBuilder
-    private var inputActionButton: some View {
-        if conversationManager.isLoading {
-            Button(action: { conversationManager.stopGenerating() }) {
-                Image(systemName: "stop.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.red)
-            }
-        } else if !inputText.isEmpty {
-            Button(action: { sendMessage() }) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-            }
         }
     }
 
@@ -584,21 +569,45 @@ struct ChatView: View {
             }
         }) {
             Image(systemName: "waveform")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(speechRecognizer.isRecording ? .red : .white)
-                .frame(width: 44, height: 44)
+                .frame(width: 50, height: 50)
                 .background {
                     if speechRecognizer.isRecording {
                         Color.red.opacity(0.3)
                     } else {
-                        Circle().fill(Color.white.opacity(0.15))
+                        Circle().fill(.ultraThinMaterial)
                     }
                 }
                 .clipShape(Circle())
                 .overlay(
                     Circle()
-                        .stroke(speechRecognizer.isRecording ? Color.red.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
+                        .stroke(
+                            LinearGradient(
+                                colors: [.white.opacity(0.3), .clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.5
+                        )
                 )
+        }
+    }
+
+    @ViewBuilder
+    private var inputActionButton: some View {
+        if conversationManager.isLoading {
+            Button(action: { conversationManager.stopGenerating() }) {
+                Image(systemName: "stop.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundColor(.red)
+            }
+        } else if !inputText.isEmpty {
+            Button(action: { sendMessage() }) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundColor(.white)
+            }
         }
     }
     
