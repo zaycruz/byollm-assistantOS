@@ -36,6 +36,9 @@ struct ChatView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     
+    // Speech-to-Speech (S2S) state
+    @State private var isS2SActive = false
+    
     // Computed property for current available models based on provider
     private var currentAvailableModels: [String] {
         provider == .cloud ? cloudModels : availableModels
@@ -568,8 +571,8 @@ struct ChatView: View {
                         }
                     }
                     
-                    // Waveform button (inside glass, on the right)
-                    microphoneButton
+                    // Waveform button - Speech-to-Speech mode
+                    speechToSpeechButton
                 }
             }
             .padding(.horizontal, 16)
@@ -589,28 +592,29 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private var microphoneButton: some View {
+    private var speechToSpeechButton: some View {
         Button(action: {
-            if speechRecognizer.isRecording {
-                speechRecognizer.stopRecording()
-                if !speechRecognizer.transcript.isEmpty {
-                    inputText = speechRecognizer.transcript
-                }
+            isS2SActive.toggle()
+            if isS2SActive {
+                // Start S2S session
+                // TODO: Implement real-time voice conversation with model
+                print("S2S mode activated")
             } else {
-                speechRecognizer.startRecording()
+                // Stop S2S session
+                print("S2S mode deactivated")
             }
         }) {
             Image(systemName: "waveform")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(speechRecognizer.isRecording ? .red : .black)
+                .foregroundColor(isS2SActive ? .white : .black)
                 .frame(width: 40, height: 40)
                 .background(
                     Circle()
-                        .fill(speechRecognizer.isRecording ? Color.red.opacity(0.3) : Color.white)
+                        .fill(isS2SActive ? Color.green : Color.white)
                 )
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                        .stroke(isS2SActive ? Color.green.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 0.5)
                 )
         }
     }
