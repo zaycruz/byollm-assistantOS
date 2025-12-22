@@ -30,6 +30,7 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     private var playbackEngine = AVAudioEngine()
     private var playerNode = AVAudioPlayerNode()
     private var playbackFormat: AVAudioFormat?
+    private var wavAudioPlayer: AVAudioPlayer?  // For WAV fallback playback
     
     private var serverURL: URL?
     private var conversationId: String?
@@ -345,27 +346,33 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     
     /// Play full WAV audio (fallback)
     private func playWAVAudio(_ data: Data) {
-        DispatchQueue.global().async { [weak self] in
-            do {
-                let player = try AVAudioPlayer(data: data)
-                player.prepareToPlay()
-                player.play()
-                
-                // Wait for playback to complete
-                while player.isPlaying {
+        // Stop any existing WAV playback
+        wavAudioPlayer?.stop()
+        
+        do {
+            wavAudioPlayer = try AVAudioPlayer(data: data)
+            wavAudioPlayer?.prepareToPlay()
+            wavAudioPlayer?.play()
+            
+            print("[WS] WAV playback started, duration: \(wavAudioPlayer?.duration ?? 0)s")
+            
+            // Monitor completion in background
+            DispatchQueue.global().async { [weak self] in
+                while self?.wavAudioPlayer?.isPlaying == true {
                     Thread.sleep(forTimeInterval: 0.1)
                 }
                 
                 DispatchQueue.main.async {
-                    self?.isSpeaking = false
-                    self?.onResponseComplete?()
-                }
-            } catch {
-                print("[WS] WAV playback error: \(error)")
-                DispatchQueue.main.async {
-                    self?.isSpeaking = false
+                    // Only call complete if we weren't interrupted
+                    if self?.isSpeaking == true {
+                        self?.isSpeaking = false
+                        self?.onResponseComplete?()
+                    }
                 }
             }
+        } catch {
+            print("[WS] WAV playback error: \(error)")
+            isSpeaking = false
         }
     }
     
@@ -525,7 +532,7 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     // MARK: - Interruption Handling
     
     private func stopAllPlayback() {
-        // Stop the player node - this immediately halts all scheduled buffers
+        // Stop PCM streaming playback (AVAudioPlayerNode)
         playerNode.stop()
         
         // Restart the player for next response
@@ -533,6 +540,10 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             playerNode.play()
         }
         
-        print("[WS] Audio playback stopped")
+        // Stop WAV playback (AVAudioPlayer)
+        wavAudioPlayer?.stop()
+        wavAudioPlayer = nil
+        
+        print("[WS] All audio playback stopped")
     }
 }
