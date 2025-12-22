@@ -577,21 +577,23 @@ struct ChatView: View {
                 
                 Spacer()
                 
-                // Mic icon (STT) or send button when typing
-                if !inputText.isEmpty || conversationManager.isLoading {
-                    inputActionButton
-                } else {
-                    Button(action: {
-                        speechRecognizer.startRecording()
-                    }) {
-                        Image(systemName: "mic")
-                            .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
+                // Mic button - always visible for STT
+                Button(action: {
+                    speechRecognizer.startRecording()
+                }) {
+                    Image(systemName: "mic")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundColor(.white.opacity(0.5))
                 }
                 
-                // Waveform button - Speech-to-Speech mode
-                speechToSpeechButton
+                // S2S button OR Send button (depending on input state)
+                if !inputText.isEmpty || conversationManager.isLoading {
+                    // Send/Stop button when there's text or loading
+                    sendOrStopButton
+                } else {
+                    // Waveform button - Speech-to-Speech mode (only when no text)
+                    speechToSpeechButton
+                }
             }
         }
     }
@@ -672,6 +674,31 @@ struct ChatView: View {
                     Circle()
                         .stroke(isS2SActive ? Color.green.opacity(0.5) : Color.white.opacity(0.2), lineWidth: 0.5)
                 )
+        }
+    }
+    
+    @ViewBuilder
+    private var sendOrStopButton: some View {
+        if conversationManager.isLoading {
+            // Stop button when generating
+            Button(action: { conversationManager.stopGenerating() }) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.red)
+                    .clipShape(Circle())
+            }
+        } else {
+            // Send button when there's text
+            Button(action: { sendMessage() }) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(width: 40, height: 40)
+                    .background(Color.green)
+                    .clipShape(Circle())
+            }
         }
     }
 
