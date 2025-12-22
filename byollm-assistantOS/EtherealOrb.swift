@@ -8,6 +8,14 @@
 
 import SwiftUI
 
+// MARK: - Agent State
+enum AgentState: String {
+    case idle
+    case listening
+    case thinking
+    case talking
+}
+
 // MARK: - Ethereal Orb
 struct EtherealOrb: View {
     let agentState: AgentState
