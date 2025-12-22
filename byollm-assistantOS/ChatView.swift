@@ -691,14 +691,32 @@ struct ChatView: View {
     
     private func startVoiceMode() {
         isVoiceModeActive = true
+        
+        // Set up silence detection callback
+        audioRecorder.onSilenceDetected = { [self] in
+            // Auto-process when silence detected
+            processVoiceInput()
+        }
+        
         audioRecorder.startRecording()
     }
     
     private func endVoiceMode() {
         isVoiceModeActive = false
+        audioRecorder.onSilenceDetected = nil
+        audioRecorder.cancelRecording()
+        voiceService.stopSpeaking()
+    }
+    
+    private func processVoiceInput() {
+        guard isVoiceModeActive else { return }
         
-        // Get the recorded audio and transcribe it
+        // Get the recorded audio
         guard let audioData = audioRecorder.stopRecording() else {
+            // Resume listening if still in voice mode
+            if isVoiceModeActive {
+                audioRecorder.startRecording()
+            }
             return
         }
         
@@ -710,12 +728,30 @@ struct ChatView: View {
                 await MainActor.run {
                     if !transcript.isEmpty {
                         inputText = transcript
-                        shouldSpeakNextResponse = true // Speak the AI response
+                        shouldSpeakNextResponse = true
                         sendMessage()
+                    } else {
+                        // No speech detected, resume listening
+                        resumeListeningAfterResponse()
                     }
                 }
             } catch {
                 print("Voice transcription error: \(error)")
+                await MainActor.run {
+                    // Resume listening even on error
+                    resumeListeningAfterResponse()
+                }
+            }
+        }
+    }
+    
+    private func resumeListeningAfterResponse() {
+        guard isVoiceModeActive else { return }
+        
+        // Small delay before resuming
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if self.isVoiceModeActive && !self.voiceService.isSpeaking {
+                self.audioRecorder.startRecording()
             }
         }
     }
@@ -781,6 +817,8 @@ struct ChatView: View {
                 
                 await MainActor.run {
                     shouldSpeakNextResponse = false
+                    // Resume listening after speaking (continuous conversation)
+                    resumeListeningAfterResponse()
                 }
             }
         }

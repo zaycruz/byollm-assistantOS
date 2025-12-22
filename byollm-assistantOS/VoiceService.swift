@@ -267,14 +267,26 @@ private class AudioPlayerDelegate: NSObject, AVAudioPlayerDelegate {
     }
 }
 
-// MARK: - Audio Recorder for Voice Mode
+// MARK: - Audio Recorder for Voice Mode with Silence Detection
 
 class AudioRecorder: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var audioData: Data?
+    @Published var audioLevel: Float = 0
+    @Published var detectedSilence = false
     
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var levelTimer: Timer?
+    private var silenceTimer: Timer?
+    
+    // Silence detection settings
+    private let silenceThreshold: Float = -40.0  // dB threshold for silence
+    private let silenceDuration: TimeInterval = 1.5  // Seconds of silence before auto-stop
+    private var silenceStartTime: Date?
+    
+    // Callback for when silence is detected
+    var onSilenceDetected: (() -> Void)?
     
     override init() {
         super.init()
@@ -300,17 +312,61 @@ class AudioRecorder: NSObject, ObservableObject {
         
         do {
             audioRecorder = try AVAudioRecorder(url: url, settings: settings)
+            audioRecorder?.isMeteringEnabled = true
             audioRecorder?.prepareToRecord()
             audioRecorder?.record()
             isRecording = true
+            detectedSilence = false
+            silenceStartTime = nil
+            
+            // Start monitoring audio levels
+            startLevelMonitoring()
         } catch {
             print("Failed to start recording: \(error)")
         }
     }
     
+    private func startLevelMonitoring() {
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.updateAudioLevel()
+        }
+    }
+    
+    private func updateAudioLevel() {
+        guard let recorder = audioRecorder, recorder.isRecording else { return }
+        
+        recorder.updateMeters()
+        let level = recorder.averagePower(forChannel: 0)
+        
+        DispatchQueue.main.async {
+            // Normalize to 0-1 range for UI
+            self.audioLevel = max(0, min(1, (level + 60) / 60))
+        }
+        
+        // Check for silence
+        if level < silenceThreshold {
+            if silenceStartTime == nil {
+                silenceStartTime = Date()
+            } else if let startTime = silenceStartTime,
+                      Date().timeIntervalSince(startTime) >= silenceDuration {
+                // Silence detected for long enough
+                DispatchQueue.main.async {
+                    self.detectedSilence = true
+                    self.onSilenceDetected?()
+                }
+            }
+        } else {
+            // Reset silence timer if sound detected
+            silenceStartTime = nil
+        }
+    }
+    
     func stopRecording() -> Data? {
+        levelTimer?.invalidate()
+        levelTimer = nil
         audioRecorder?.stop()
         isRecording = false
+        audioLevel = 0
         
         guard let url = recordingURL else { return nil }
         
@@ -322,5 +378,14 @@ class AudioRecorder: NSObject, ObservableObject {
             print("Failed to read recording: \(error)")
             return nil
         }
+    }
+    
+    func cancelRecording() {
+        levelTimer?.invalidate()
+        levelTimer = nil
+        audioRecorder?.stop()
+        isRecording = false
+        audioLevel = 0
+        detectedSilence = false
     }
 }
