@@ -662,17 +662,17 @@ struct ChatView: View {
                 .foregroundColor(.black)
                 .padding(.horizontal, 12)
                 .frame(height: 44)
-                .background(Color(red: 0.3, green: 0.8, blue: 0.7))
+                .background(Color.white)
                 .clipShape(Capsule())
             }
         } else {
-            // Start voice mode button (green waveform)
+            // Start voice mode button
             Button(action: { startVoiceMode() }) {
                 Image(systemName: "waveform")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.black)
                     .frame(width: 44, height: 44)
-                    .background(Color(red: 0.3, green: 0.75, blue: 0.45))
+                    .background(Color.white)
                     .clipShape(Circle())
             }
         }
