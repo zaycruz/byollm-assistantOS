@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ChatView: View {
     @StateObject private var conversationManager = ConversationManager()
+    @StateObject private var speechRecognizer = SpeechRecognizer()
     @State private var inputText = ""
     @State private var showSidePanel = false
     @State private var showSettings = false
@@ -163,11 +164,174 @@ struct ChatView: View {
     }
     
     var body: some View {
+        bodyWithModifiers
+    }
+    
+    private var bodyWithModifiers: some View {
+        bodyWithSettingsModifiers
+            .onChange(of: provider) { _, newValue in handleProviderChange(newValue) }
+            .onChange(of: speechRecognizer.transcript) { _, newValue in handleTranscriptChange(newValue) }
+    }
+    
+    private var bodyWithSettingsModifiers: some View {
+        bodyWithBasicModifiers
+            .onChange(of: systemPrompt) { _, newValue in handleSystemPromptChange(newValue) }
+            .onChange(of: selectedModel) { _, newValue in handleSelectedModelChange(newValue) }
+            .onChange(of: safetyLevel) { _, newValue in handleSafetyLevelChange(newValue) }
+            .onChange(of: reasoningEffort) { _, newValue in handleReasoningEffortChange(newValue) }
+    }
+    
+    private var bodyWithBasicModifiers: some View {
+        mainContent
+            .onAppear(perform: handleOnAppear)
+            .onChange(of: serverAddress) { _, newValue in handleServerAddressChange(newValue) }
+            .onChange(of: showKeyboardOnLaunch) { _, newValue in UserDefaults.standard.set(newValue, forKey: "showKeyboardOnLaunch") }
+            .onChange(of: selectedTheme) { _, newValue in UserDefaults.standard.set(newValue.storageValue, forKey: "selectedTheme") }
+            .onChange(of: selectedFontStyle) { _, newValue in UserDefaults.standard.set(newValue.storageValue, forKey: "selectedFontStyle") }
+    }
+    
+    private func handleOnAppear() {
+        conversationManager.newConversation()
+        
+        if let savedAddress = UserDefaults.standard.string(forKey: "serverAddress") {
+            serverAddress = savedAddress
+            conversationManager.serverAddress = savedAddress
+        }
+        
+        if UserDefaults.standard.object(forKey: "showKeyboardOnLaunch") != nil {
+            showKeyboardOnLaunch = UserDefaults.standard.bool(forKey: "showKeyboardOnLaunch")
+        }
+        
+        if let savedTheme = UserDefaults.standard.string(forKey: "selectedTheme"),
+           let theme = AppTheme(storageValue: savedTheme) {
+            selectedTheme = theme
+        }
+        if let savedFont = UserDefaults.standard.string(forKey: "selectedFontStyle"),
+           let font = FontStyle(storageValue: savedFont) {
+            selectedFontStyle = font
+        }
+        
+        if let savedSystemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") {
+            systemPrompt = savedSystemPrompt
+            conversationManager.systemPrompt = savedSystemPrompt
+        }
+        
+        if let savedModel = UserDefaults.standard.string(forKey: "selectedModel") {
+            selectedModel = savedModel
+            conversationManager.selectedModel = savedModel
+        } else {
+            conversationManager.selectedModel = selectedModel
+        }
+        
+        if let savedLevel = UserDefaults.standard.string(forKey: "safetyLevel"),
+           let level = SafetyLevel(rawValue: savedLevel) {
+            safetyLevel = level
+            conversationManager.safetyLevel = level.rawValue
+        }
+        
+        if let savedEffort = UserDefaults.standard.string(forKey: "reasoningEffort"),
+           let effort = ReasoningEffort(rawValue: savedEffort) {
+            reasoningEffort = effort
+            conversationManager.reasoningEffort = effort.rawValue
+        }
+        
+        if let savedProvider = UserDefaults.standard.string(forKey: "provider"),
+           let providerValue = Provider(rawValue: savedProvider) {
+            provider = providerValue
+            conversationManager.provider = providerValue.rawValue
+        } else {
+            conversationManager.provider = provider.rawValue
+        }
+        
+        if provider == .cloud && !cloudModels.contains(selectedModel) {
+            selectedModel = cloudModels.first ?? "claude-sonnet-4-5"
+            conversationManager.selectedModel = selectedModel
+        }
+        
+        if showKeyboardOnLaunch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                isInputFocused = true
+            }
+        }
+        
+        loadModelsFromServer()
+        setupKeyboardNotifications()
+    }
+    
+    private func setupKeyboardNotifications() {
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            withAnimation(.easeOut(duration: 0.3)) {
+                keyboardHeight = keyboardFrame.height
+            }
+        }
+        
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            withAnimation(.easeOut(duration: 0.3)) {
+                keyboardHeight = 0
+            }
+        }
+    }
+    
+    private func handleServerAddressChange(_ newValue: String) {
+        conversationManager.serverAddress = newValue
+        UserDefaults.standard.set(newValue, forKey: "serverAddress")
+        loadModelsFromServer()
+    }
+    
+    private func handleSystemPromptChange(_ newValue: String) {
+        conversationManager.systemPrompt = newValue
+        UserDefaults.standard.set(newValue, forKey: "systemPrompt")
+    }
+    
+    private func handleSelectedModelChange(_ newValue: String) {
+        conversationManager.selectedModel = newValue
+        UserDefaults.standard.set(newValue, forKey: "selectedModel")
+    }
+    
+    private func handleSafetyLevelChange(_ newValue: SafetyLevel) {
+        conversationManager.safetyLevel = newValue.rawValue
+        UserDefaults.standard.set(newValue.rawValue, forKey: "safetyLevel")
+    }
+    
+    private func handleReasoningEffortChange(_ newValue: ReasoningEffort) {
+        conversationManager.reasoningEffort = newValue.rawValue
+        UserDefaults.standard.set(newValue.rawValue, forKey: "reasoningEffort")
+    }
+    
+    private func handleProviderChange(_ newValue: Provider) {
+        conversationManager.provider = newValue.rawValue
+        UserDefaults.standard.set(newValue.rawValue, forKey: "provider")
+        
+        if newValue == .cloud {
+            if !cloudModels.contains(selectedModel) {
+                selectedModel = cloudModels.first ?? "claude-sonnet-4-5"
+            }
+        } else {
+            if !availableModels.contains(selectedModel) {
+                selectedModel = availableModels.first ?? "gpt-oss:latest"
+            }
+        }
+    }
+    
+    private func handleTranscriptChange(_ newValue: String) {
+        if speechRecognizer.isRecording && !newValue.isEmpty {
+            inputText = newValue
+        }
+    }
+    
+    private var mainContent: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                // Main Content
                 ZStack {
-                    // Gradient Background (Dynamic Theme)
                     LinearGradient(
                         colors: selectedTheme.colors,
                         startPoint: .top,
@@ -175,342 +339,212 @@ struct ChatView: View {
                     )
                     .ignoresSafeArea()
                     .onTapGesture {
-                        // Dismiss keyboard when tapping outside
                         isInputFocused = false
                     }
                     
                     VStack(spacing: 0) {
-                        // Top Bar
-                        HStack {
-                            // Combined Settings/History Button - Left
-                            HStack(spacing: 16) {
-                                Button(action: { 
-                                    sidePanelView = .settings
-                                    showSidePanel = true
-                                }) {
-                                    Image(systemName: "gearshape")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
-                                }
-                                
-                                Button(action: { 
-                                    sidePanelView = .chatHistory
-                                    showSidePanel = true
-                                }) {
-                                    Image(systemName: "message")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.15))
-                            .cornerRadius(25)
-                            
-                            Spacer()
-                            
-                            // New Chat Icon Button - Right
-                            Button(action: { conversationManager.newConversation() }) {
-                                Image(systemName: "square.and.pencil")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 50, height: 50)
-                                    .background(Color.white.opacity(0.15))
-                                    .clipShape(Circle())
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 20)
-                        
-                        // Messages or Welcome Screen
-                        if conversationManager.currentConversation.messages.isEmpty {
-                            WelcomeView(fontStyle: selectedFontStyle)
-                        } else {
-                            MessagesListView(messages: conversationManager.currentConversation.messages, fontStyle: selectedFontStyle, isLoading: conversationManager.isLoading, isInputFocused: $isInputFocused)
-                        }
-                        
-                        // Input Area
-                        VStack(spacing: 12) {
-                            // Input Field
-                            HStack(alignment: .bottom, spacing: 12) {
-                                Button(action: {}) {
-                                    Image(systemName: "plus")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
-                                }
-                                
-                                HStack(alignment: .bottom, spacing: 8) {
-                                    ZStack(alignment: .topLeading) {
-                                        // Placeholder text
-                                        if inputText.isEmpty {
-                                            Text("Ask anything")
-                                                .foregroundColor(.white.opacity(0.5))
-                                                .padding(.horizontal, 4)
-                                                .padding(.top, 8)
-                                        }
-                                        
-                                        // Multiline text editor
-                                        TextEditor(text: $inputText)
-                                            .foregroundColor(.white)
-                                            .focused($isInputFocused)
-                                            .scrollContentBackground(.hidden)
-                                            .background(Color.clear)
-                                            .frame(height: inputTextHeight)
-                                            .padding(.horizontal, -4)
-                                            .padding(.vertical, -8)
-                                            .disabled(conversationManager.isLoading)
-                                            .onChange(of: inputText) { oldValue, newValue in
-                                                // Limit text length if needed
-                                                if newValue.count > 10000 {
-                                                    inputText = String(newValue.prefix(10000))
-                                                }
-                                                
-                                                // Calculate height based on content
-                                                // Account for both explicit newlines and text wrapping
-                                                if newValue.isEmpty {
-                                                    inputTextHeight = 36
-                                                } else {
-                                                    // Estimate lines: explicit newlines + estimated wrapped lines
-                                                    let explicitLines = newValue.components(separatedBy: .newlines).count
-                                                    // Rough estimate: ~30 characters per line (accounting for padding)
-                                                    let estimatedWrappedLines = max(1, Int(ceil(Double(newValue.replacingOccurrences(of: "\n", with: "").count) / 30.0)))
-                                                    let totalLines = max(explicitLines, estimatedWrappedLines)
-                                                    let estimatedHeight = CGFloat(totalLines) * 22.0 + 12.0
-                                                    inputTextHeight = min(max(36, estimatedHeight), 120)
-                                                }
-                                            }
-                                    }
-                                    .frame(height: inputTextHeight)
-                                    
-                                    // Action button (send or stop)
-                                    if conversationManager.isLoading {
-                                        // Stop button when loading
-                                        Button(action: { 
-                                            conversationManager.stopGenerating()
-                                        }) {
-                                            Image(systemName: "stop.circle.fill")
-                                                .font(.title2)
-                                                .foregroundColor(.red)
-                                        }
-                                        .padding(.bottom, 4)
-                                    } else if !inputText.isEmpty {
-                                        Button(action: { sendMessage() }) {
-                                            Image(systemName: "arrow.up.circle.fill")
-                                                .font(.title2)
-                                                .foregroundColor(.white)
-                                        }
-                                        .padding(.bottom, 4)
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(Color.white.opacity(0.15))
-                                .cornerRadius(25)
-                                
-                                Button(action: {}) {
-                                    Image(systemName: "waveform")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.white.opacity(0.15))
-                                        .clipShape(Circle())
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                        .padding(.bottom, keyboardHeight > 0 ? 8 : 40)
+                        topBar
+                        messagesContent
+                        chatInputArea
+                            .padding(.bottom, keyboardHeight > 0 ? 8 : 40)
                     }
                 }
             }
             .sheet(isPresented: $showSidePanel) {
-                if sidePanelView == .settings {
-                    SettingsView(
-                        conversationManager: conversationManager,
-                        showKeyboardOnLaunch: $showKeyboardOnLaunch,
-                        serverAddress: $serverAddress,
-                        systemPrompt: $systemPrompt,
-                        selectedTheme: $selectedTheme,
-                        selectedFontStyle: $selectedFontStyle,
-                        safetyLevel: $safetyLevel,
-                        provider: $provider,
-                        selectedModel: $selectedModel,
-                        availableModels: $availableModels,
-                        cloudModels: $cloudModels,
-                        reasoningEffort: $reasoningEffort,
-                        isInSidePanel: false,
-                        onBack: {
-                            showSidePanel = false
-                        },
-                        onDismiss: {
-                            showSidePanel = false
+                sheetContent
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var sheetContent: some View {
+        if sidePanelView == .settings {
+            SettingsView(
+                conversationManager: conversationManager,
+                showKeyboardOnLaunch: $showKeyboardOnLaunch,
+                serverAddress: $serverAddress,
+                systemPrompt: $systemPrompt,
+                selectedTheme: $selectedTheme,
+                selectedFontStyle: $selectedFontStyle,
+                safetyLevel: $safetyLevel,
+                provider: $provider,
+                selectedModel: $selectedModel,
+                availableModels: $availableModels,
+                cloudModels: $cloudModels,
+                reasoningEffort: $reasoningEffort,
+                isInSidePanel: false,
+                onBack: { showSidePanel = false },
+                onDismiss: { showSidePanel = false }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        } else if sidePanelView == .chatHistory {
+            ChatHistorySheetView(
+                conversationManager: conversationManager,
+                isPresented: $showSidePanel
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+    
+    private var topBar: some View {
+        HStack {
+            HStack(spacing: 16) {
+                Button(action: { 
+                    sidePanelView = .settings
+                    showSidePanel = true
+                }) {
+                    Image(systemName: "gearshape")
+                        .font(.title3)
+                        .foregroundColor(.white)
+                }
+                
+                Button(action: { 
+                    sidePanelView = .chatHistory
+                    showSidePanel = true
+                }) {
+                    Image(systemName: "message")
+                        .font(.title3)
+                        .foregroundColor(.white)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.15))
+            .cornerRadius(25)
+            
+            Spacer()
+            
+            Button(action: { conversationManager.newConversation() }) {
+                Image(systemName: "square.and.pencil")
+                    .font(.title2)
+                    .foregroundColor(.white)
+                    .frame(width: 50, height: 50)
+                    .background(Color.white.opacity(0.15))
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 20)
+    }
+    
+    @ViewBuilder
+    private var messagesContent: some View {
+        if conversationManager.currentConversation.messages.isEmpty {
+            WelcomeView(fontStyle: selectedFontStyle)
+        } else {
+            MessagesListView(
+                messages: conversationManager.currentConversation.messages,
+                fontStyle: selectedFontStyle,
+                isLoading: conversationManager.isLoading,
+                isInputFocused: $isInputFocused
+            )
+        }
+    }
+    
+    private var chatInputArea: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .bottom, spacing: 12) {
+                Button(action: {}) {
+                    Image(systemName: "plus")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.15))
+                        .clipShape(Circle())
+                }
+                
+                HStack(alignment: .bottom, spacing: 8) {
+                    ZStack(alignment: .topLeading) {
+                        if inputText.isEmpty {
+                            Text("Ask anything")
+                                .foregroundColor(.white.opacity(0.5))
+                                .padding(.horizontal, 4)
+                                .padding(.top, 8)
                         }
-                    )
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                } else if sidePanelView == .chatHistory {
-                    ChatHistorySheetView(
-                        conversationManager: conversationManager,
-                        isPresented: $showSidePanel
-                    )
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
+                        
+                        TextEditor(text: $inputText)
+                            .foregroundColor(.white)
+                            .focused($isInputFocused)
+                            .scrollContentBackground(.hidden)
+                            .background(Color.clear)
+                            .frame(height: inputTextHeight)
+                            .padding(.horizontal, -4)
+                            .padding(.vertical, -8)
+                            .disabled(conversationManager.isLoading)
+                            .onChange(of: inputText) { oldValue, newValue in
+                                if newValue.count > 10000 {
+                                    inputText = String(newValue.prefix(10000))
+                                }
+                                updateInputHeight(for: newValue)
+                            }
+                    }
+                    .frame(height: inputTextHeight)
+                    
+                    // Action button (send or stop)
+                    inputActionButton
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.15))
+                .cornerRadius(25)
+                
+                microphoneButton
             }
+            .padding(.horizontal, 16)
         }
-        .onAppear {
-            // Start with a fresh conversation on app launch
-            conversationManager.newConversation()
-            
-            // Load saved server address
-            if let savedAddress = UserDefaults.standard.string(forKey: "serverAddress") {
-                serverAddress = savedAddress
-                conversationManager.serverAddress = savedAddress
+    }
+    
+    @ViewBuilder
+    private var inputActionButton: some View {
+        if conversationManager.isLoading {
+            Button(action: { conversationManager.stopGenerating() }) {
+                Image(systemName: "stop.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.red)
             }
-            
-            // Load saved keyboard behavior
-            if UserDefaults.standard.object(forKey: "showKeyboardOnLaunch") != nil {
-                showKeyboardOnLaunch = UserDefaults.standard.bool(forKey: "showKeyboardOnLaunch")
+            .padding(.bottom, 4)
+        } else if !inputText.isEmpty || speechRecognizer.isRecording {
+            Button(action: { sendMessage() }) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.white)
             }
-            
-            // Load saved theme + font style
-            if let savedTheme = UserDefaults.standard.string(forKey: "selectedTheme"),
-               let theme = AppTheme(storageValue: savedTheme) {
-                selectedTheme = theme
-            }
-            if let savedFont = UserDefaults.standard.string(forKey: "selectedFontStyle"),
-               let font = FontStyle(storageValue: savedFont) {
-                selectedFontStyle = font
-            }
-            
-            // Load saved system prompt (about me / custom instructions)
-            if let savedSystemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") {
-                systemPrompt = savedSystemPrompt
-                conversationManager.systemPrompt = savedSystemPrompt
-            }
-            
-            // Load saved selected model (will be validated after provider is loaded)
-            if let savedModel = UserDefaults.standard.string(forKey: "selectedModel") {
-                selectedModel = savedModel
-                conversationManager.selectedModel = savedModel
-            } else {
-                // Sync the default selected model to conversation manager
-                conversationManager.selectedModel = selectedModel
-            }
-            
-            // Load saved safety level
-            if let savedLevel = UserDefaults.standard.string(forKey: "safetyLevel"),
-               let level = SafetyLevel(rawValue: savedLevel) {
-                safetyLevel = level
-                conversationManager.safetyLevel = level.rawValue
-            }
-            
-            // Load saved reasoning effort
-            if let savedEffort = UserDefaults.standard.string(forKey: "reasoningEffort"),
-               let effort = ReasoningEffort(rawValue: savedEffort) {
-                reasoningEffort = effort
-                conversationManager.reasoningEffort = effort.rawValue
-            }
-            
-            // Load saved provider
-            if let savedProvider = UserDefaults.standard.string(forKey: "provider"),
-               let providerValue = Provider(rawValue: savedProvider) {
-                provider = providerValue
-                conversationManager.provider = providerValue.rawValue
-            } else {
-                // Sync the default provider to conversation manager
-                conversationManager.provider = provider.rawValue
-            }
-            
-            // Validate selected model against current provider
-            if provider == .cloud {
-                if !cloudModels.contains(selectedModel) {
-                    selectedModel = cloudModels.first ?? "claude-sonnet-4-5"
-                    conversationManager.selectedModel = selectedModel
-                }
-            }
-            
-            if showKeyboardOnLaunch {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    isInputFocused = true
-                }
-            }
-            
-            // Load models AFTER server address is set
-            loadModelsFromServer()
-            
-            // Setup keyboard notifications
-            NotificationCenter.default.addObserver(
-                forName: UIResponder.keyboardWillShowNotification,
-                object: nil,
-                queue: .main
-            ) { notification in
-                guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                withAnimation(.easeOut(duration: 0.3)) {
-                    keyboardHeight = keyboardFrame.height
-                }
-            }
-            
-            NotificationCenter.default.addObserver(
-                forName: UIResponder.keyboardWillHideNotification,
-                object: nil,
-                queue: .main
-            ) { _ in
-                withAnimation(.easeOut(duration: 0.3)) {
-                    keyboardHeight = 0
-                }
-            }
+            .padding(.bottom, 4)
         }
-        .onChange(of: serverAddress) { oldValue, newValue in
-            conversationManager.serverAddress = newValue
-            // Save to UserDefaults
-            UserDefaults.standard.set(newValue, forKey: "serverAddress")
-            loadModelsFromServer()
-        }
-        .onChange(of: showKeyboardOnLaunch) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: "showKeyboardOnLaunch")
-        }
-        .onChange(of: selectedTheme) { _, newValue in
-            UserDefaults.standard.set(newValue.storageValue, forKey: "selectedTheme")
-        }
-        .onChange(of: selectedFontStyle) { _, newValue in
-            UserDefaults.standard.set(newValue.storageValue, forKey: "selectedFontStyle")
-        }
-        .onChange(of: systemPrompt) { oldValue, newValue in
-            conversationManager.systemPrompt = newValue
-            UserDefaults.standard.set(newValue, forKey: "systemPrompt")
-        }
-        .onChange(of: selectedModel) { oldValue, newValue in
-            conversationManager.selectedModel = newValue
-            UserDefaults.standard.set(newValue, forKey: "selectedModel")
-        }
-        .onChange(of: safetyLevel) { oldValue, newValue in
-            conversationManager.safetyLevel = newValue.rawValue
-            UserDefaults.standard.set(newValue.rawValue, forKey: "safetyLevel")
-        }
-        .onChange(of: reasoningEffort) { oldValue, newValue in
-            conversationManager.reasoningEffort = newValue.rawValue
-            UserDefaults.standard.set(newValue.rawValue, forKey: "reasoningEffort")
-        }
-        .onChange(of: provider) { oldValue, newValue in
-            conversationManager.provider = newValue.rawValue
-            UserDefaults.standard.set(newValue.rawValue, forKey: "provider")
-            
-            // Switch to appropriate model for the provider
-            if newValue == .cloud {
-                // Switch to first cloud model
-                if !cloudModels.contains(selectedModel) {
-                    selectedModel = cloudModels.first ?? "claude-sonnet-4-5"
+    }
+    
+    private var microphoneButton: some View {
+        Button(action: {
+            if speechRecognizer.isRecording {
+                speechRecognizer.stopRecording()
+                if !speechRecognizer.transcript.isEmpty {
+                    inputText = speechRecognizer.transcript
                 }
             } else {
-                // Switch to first local model
-                if !availableModels.contains(selectedModel) {
-                    selectedModel = availableModels.first ?? "gpt-oss:latest"
-                }
+                speechRecognizer.startRecording()
             }
+        }) {
+            Image(systemName: speechRecognizer.isRecording ? "mic.fill" : "mic")
+                .font(.title2)
+                .foregroundColor(speechRecognizer.isRecording ? .red : .white)
+                .frame(width: 44, height: 44)
+                .background(speechRecognizer.isRecording ? Color.red.opacity(0.3) : Color.white.opacity(0.15))
+                .clipShape(Circle())
+        }
+    }
+    
+    private func updateInputHeight(for text: String) {
+        if text.isEmpty {
+            inputTextHeight = 36
+        } else {
+            let explicitLines = text.components(separatedBy: .newlines).count
+            let estimatedWrappedLines = max(1, Int(ceil(Double(text.replacingOccurrences(of: "\n", with: "").count) / 30.0)))
+            let totalLines = max(explicitLines, estimatedWrappedLines)
+            let estimatedHeight = CGFloat(totalLines) * 22.0 + 12.0
+            inputTextHeight = min(max(36, estimatedHeight), 120)
         }
     }
     

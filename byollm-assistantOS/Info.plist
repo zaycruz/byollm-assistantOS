@@ -7,5 +7,9 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app uses speech recognition to convert your voice to text for chat messages.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access to listen to your voice for speech-to-text.</string>
 </dict>
 </plist>
