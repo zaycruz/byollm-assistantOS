@@ -70,10 +70,11 @@ struct ChatResponse: Codable {
     struct ResponseMessage: Codable {
         let role: String
         let content: String
-        let reasoningContent: String?  // For GPT-oss thinking
+        let reasoningContent: String?  // For GPT-oss thinking (reasoning_content)
+        let reasoning: String?  // For Ollama native reasoning output
         
         enum CodingKeys: String, CodingKey {
-            case role, content
+            case role, content, reasoning
             case reasoningContent = "reasoning_content"
         }
     }
@@ -111,10 +112,11 @@ struct ChatStreamResponse: Codable {
     struct Delta: Codable {
         let role: String?
         let content: String?
-        let reasoningContent: String?  // For GPT-oss thinking
+        let reasoningContent: String?  // For GPT-oss thinking (reasoning_content)
+        let reasoning: String?  // For Ollama native reasoning output
         
         enum CodingKeys: String, CodingKey {
-            case role, content
+            case role, content, reasoning
             case reasoningContent = "reasoning_content"
         }
     }
@@ -390,12 +392,18 @@ class NetworkManager {
                         do {
                             let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
                             
-                            // Handle reasoning content (for GPT-oss models)
+                            // Handle reasoning content (for GPT-oss models via reasoning_content)
                             if let reasoningContent = streamResponse.choices.first?.delta.reasoningContent {
-                                print("🧠 Reasoning content chunk: \(reasoningContent.prefix(100))")
+                                print("🧠 Reasoning content chunk (reasoning_content): \(reasoningContent.prefix(100))")
                                 onReasoningChunk(reasoningContent)
                             }
                             
+                            // Handle reasoning (for Ollama native reasoning output)
+                            if let reasoning = streamResponse.choices.first?.delta.reasoning {
+                                print("🧠 Reasoning chunk (reasoning): \(reasoning.prefix(100))")
+                                onReasoningChunk(reasoning)
+                            }
+
                             // Handle regular content
                             if let content = streamResponse.choices.first?.delta.content {
                                 onChunk(content)
@@ -428,12 +436,18 @@ class NetworkManager {
                         do {
                             let streamResponse = try JSONDecoder().decode(ChatStreamResponse.self, from: jsonData)
                             
-                            // Handle reasoning content (for GPT-oss models)
+                            // Handle reasoning content (for GPT-oss models via reasoning_content)
                             if let reasoningContent = streamResponse.choices.first?.delta.reasoningContent {
-                                print("🧠 Final reasoning content chunk: \(reasoningContent.prefix(100))")
+                                print("🧠 Final reasoning content chunk (reasoning_content): \(reasoningContent.prefix(100))")
                                 onReasoningChunk(reasoningContent)
                             }
                             
+                            // Handle reasoning (for Ollama native reasoning output)
+                            if let reasoning = streamResponse.choices.first?.delta.reasoning {
+                                print("🧠 Final reasoning chunk (reasoning): \(reasoning.prefix(100))")
+                                onReasoningChunk(reasoning)
+                            }
+
                             // Handle regular content
                             if let content = streamResponse.choices.first?.delta.content {
                                 onChunk(content)
