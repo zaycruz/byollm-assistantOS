@@ -17,6 +17,9 @@ struct SettingsView: View {
     @Binding var selectedFontStyle: ChatView.FontStyle
     @Binding var safetyLevel: ChatView.SafetyLevel
     @Binding var provider: ChatView.Provider
+    @Binding var selectedModel: String
+    @Binding var availableModels: [String]
+    @Binding var cloudModels: [String]
     @State private var showingDeleteAlert = false
     @State private var showingPersonalization = false
     @State private var editingServerAddress: String = ""
@@ -248,6 +251,54 @@ struct SettingsView: View {
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                         .padding(.leading, 40)
+                                    
+                                    Divider()
+                                        .background(Color.white.opacity(0.2))
+                                    
+                                    // Model Selector
+                                    HStack(spacing: 16) {
+                                        Image(systemName: "cpu")
+                                            .font(.title3)
+                                            .foregroundColor(.white)
+                                            .frame(width: 24)
+                                        
+                                        Text("Model")
+                                            .foregroundColor(.white)
+                                            .font(.body)
+                                        
+                                        Spacer()
+                                        
+                                        Menu {
+                                            ForEach(currentModels, id: \.self) { model in
+                                                Button(action: {
+                                                    selectedModel = model
+                                                }) {
+                                                    HStack {
+                                                        Text(formatModelName(model))
+                                                        if selectedModel == model {
+                                                            Image(systemName: "checkmark")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Text(formatModelName(selectedModel))
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                    .font(.body)
+                                                    .lineLimit(1)
+                                                Image(systemName: "chevron.up.chevron.down")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.white.opacity(0.5))
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Model description
+                                    Text("Select which model to use for conversations")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                        .padding(.leading, 40)
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 16)
@@ -381,6 +432,14 @@ struct SettingsView: View {
         }
         .navigationBarHidden(true)
         }
+    }
+    
+    private var currentModels: [String] {
+        provider == .cloud ? cloudModels : availableModels
+    }
+    
+    private func formatModelName(_ modelName: String) -> String {
+        modelName.replacingOccurrences(of: ":latest", with: "")
     }
     
     private func testConnection() {

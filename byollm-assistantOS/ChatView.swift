@@ -337,6 +337,9 @@ struct ChatView: View {
                         selectedFontStyle: $selectedFontStyle,
                         safetyLevel: $safetyLevel,
                         provider: $provider,
+                        selectedModel: $selectedModel,
+                        availableModels: $availableModels,
+                        cloudModels: $cloudModels,
                         isInSidePanel: false,
                         onBack: {
                             showSidePanel = false
@@ -1057,6 +1060,9 @@ struct SidePanelContainerView: View {
     @Binding var selectedFontStyle: ChatView.FontStyle
     @Binding var safetyLevel: ChatView.SafetyLevel
     @Binding var provider: ChatView.Provider
+    @Binding var selectedModel: String
+    @Binding var availableModels: [String]
+    @Binding var cloudModels: [String]
     @Binding var currentView: SidePanelContentView
     @Binding var isPresented: Bool
     
@@ -1086,6 +1092,9 @@ struct SidePanelContainerView: View {
                     selectedFontStyle: $selectedFontStyle,
                     safetyLevel: $safetyLevel,
                     provider: $provider,
+                    selectedModel: $selectedModel,
+                    availableModels: $availableModels,
+                    cloudModels: $cloudModels,
                     isInSidePanel: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.3)) {
