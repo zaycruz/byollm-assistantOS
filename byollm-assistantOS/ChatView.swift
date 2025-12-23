@@ -42,6 +42,7 @@ struct ChatView: View {
     private struct PendingAttachment: Identifiable {
         let id = UUID()
         let data: Data
+        let previewData: Data?
         let filename: String
         let mimeType: String
     }
@@ -648,7 +649,7 @@ struct ChatView: View {
                 )
                 .overlay {
                     if attachment.mimeType.lowercased().hasPrefix("image/"),
-                       let image = UIImage(data: attachment.data) {
+                       let image = UIImage(data: attachment.previewData ?? attachment.data) {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
@@ -687,6 +688,24 @@ struct ChatView: View {
     
     private func removePendingAttachment(_ id: UUID) {
         pendingAttachments.removeAll { $0.id == id }
+    }
+    
+    private func makeThumbnailJPEG(from image: UIImage, maxDimension: CGFloat, quality: CGFloat) -> Data? {
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        
+        let scale = min(maxDimension / max(size.width, size.height), 1.0)
+        let targetSize = CGSize(width: size.width * scale, height: size.height * scale)
+        
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1.0
+        
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return resized.jpegData(compressionQuality: quality)
     }
     
     private var sttRecordingContent: some View {
@@ -916,9 +935,11 @@ struct ChatView: View {
             return
         }
         
+        let preview = makeThumbnailJPEG(from: image, maxDimension: 512, quality: 0.82)
+        
         let filename = "image-\(Int(Date().timeIntervalSince1970)).jpg"
         await MainActor.run {
-            pendingAttachments.append(PendingAttachment(data: data, filename: filename, mimeType: "image/jpeg"))
+            pendingAttachments.append(PendingAttachment(data: data, previewData: preview, filename: filename, mimeType: "image/jpeg"))
         }
     }
     
@@ -939,7 +960,7 @@ struct ChatView: View {
             let ext = url.pathExtension
             let mimeType = UTType(filenameExtension: ext)?.preferredMIMEType ?? "application/octet-stream"
             await MainActor.run {
-                pendingAttachments.append(PendingAttachment(data: data, filename: filename, mimeType: mimeType))
+                pendingAttachments.append(PendingAttachment(data: data, previewData: nil, filename: filename, mimeType: mimeType))
             }
         } catch {
             await MainActor.run {
@@ -951,7 +972,14 @@ struct ChatView: View {
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let files = pendingAttachments.map { ChatCompletionFile(filename: $0.filename, mimeType: $0.mimeType, data: $0.data) }
-        conversationManager.sendMessage(inputText, files: files)
+        let messageAttachments = pendingAttachments.map { attachment in
+            MessageAttachment(
+                filename: attachment.filename,
+                mimeType: attachment.mimeType,
+                thumbnailData: attachment.previewData
+            )
+        }
+        conversationManager.sendMessage(inputText, files: files, messageAttachments: messageAttachments)
         inputText = ""
         inputTextHeight = 28
         pendingAttachments.removeAll()
@@ -1159,17 +1187,23 @@ struct MessageBubble: View {
             HStack {
                 Spacer()
                 
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text(message.content)
-                        .font(fontStyle.apply(size: 17, weight: .regular))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.trailing)
+                VStack(alignment: .trailing, spacing: 8) {
+                    if let attachments = message.attachments, !attachments.isEmpty {
+                        userMessageAttachmentsView(attachments)
+                    }
+                    
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(message.content)
+                            .font(fontStyle.apply(size: 17, weight: .regular))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.2))
+                    .cornerRadius(20)
+                    .frame(maxWidth: 280, alignment: .trailing)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(20)
-                .frame(maxWidth: 280, alignment: .trailing)
             }
         } else {
             // AI message: full width, no bubble
@@ -1556,6 +1590,58 @@ struct MessageBubble: View {
             attributed.font = fontStyle.apply(size: 17, weight: .regular)
             attributed.foregroundColor = .white
             return attributed
+        }
+    }
+    
+    @ViewBuilder
+    private func userMessageAttachmentsView(_ attachments: [MessageAttachment]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(attachments) { attachment in
+                    userAttachmentTile(attachment)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(height: 190)
+    }
+    
+    @ViewBuilder
+    private func userAttachmentTile(_ attachment: MessageAttachment) -> some View {
+        let isImage = attachment.mimeType.lowercased().hasPrefix("image/")
+        
+        if isImage, let thumb = attachment.thumbnailData, let image = UIImage(data: thumb) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 190, height: 190)
+                .clipped()
+                .cornerRadius(22)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                )
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "doc.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(attachment.filename)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .frame(width: 190, height: 190)
+            .background(Color.white.opacity(0.12))
+            .cornerRadius(22)
+            .overlay(
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+            )
         }
     }
 }

@@ -7,17 +7,40 @@
 
 import Foundation
 
+struct MessageAttachment: Identifiable, Equatable, Codable {
+    let id: UUID
+    let filename: String
+    let mimeType: String
+    /// Small preview bytes for UI (e.g. JPEG thumbnail). Nil for non-images.
+    let thumbnailData: Data?
+    
+    init(filename: String, mimeType: String, thumbnailData: Data? = nil) {
+        self.id = UUID()
+        self.filename = filename
+        self.mimeType = mimeType
+        self.thumbnailData = thumbnailData
+    }
+}
+
 struct Message: Identifiable, Equatable, Codable {
     let id: UUID
     let content: String
     let thinkingContent: String?  // Stores thinking tokens separately
+    let attachments: [MessageAttachment]?
     let isUser: Bool
     let timestamp: Date
     
-    init(content: String, isUser: Bool, timestamp: Date, thinkingContent: String? = nil) {
+    init(
+        content: String,
+        isUser: Bool,
+        timestamp: Date,
+        thinkingContent: String? = nil,
+        attachments: [MessageAttachment]? = nil
+    ) {
         self.id = UUID()
         self.content = content
         self.thinkingContent = thinkingContent
+        self.attachments = attachments
         self.isUser = isUser
         self.timestamp = timestamp
     }
@@ -209,8 +232,13 @@ class ConversationManager: ObservableObject {
         }
     }
     
-    func sendMessage(_ content: String, files: [ChatCompletionFile] = []) {
-        let userMessage = Message(content: content, isUser: true, timestamp: Date())
+    func sendMessage(_ content: String, files: [ChatCompletionFile] = [], messageAttachments: [MessageAttachment] = []) {
+        let userMessage = Message(
+            content: content,
+            isUser: true,
+            timestamp: Date(),
+            attachments: messageAttachments.isEmpty ? nil : messageAttachments
+        )
         currentConversation.messages.append(userMessage)
         
         // Check if server is configured

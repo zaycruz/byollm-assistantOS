@@ -9,4 +9,5 @@ def test_ios_chat_view_has_attachment_preview_strip():
     swift = Path("byollm-assistantOS/ChatView.swift").read_text(encoding="utf-8")
     assert "attachmentPreviewStrip" in swift
     assert "xmark.circle.fill" in swift
+    assert "userMessageAttachmentsView" in swift
 
