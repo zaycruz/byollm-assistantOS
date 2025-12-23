@@ -38,8 +38,15 @@ struct ChatView: View {
     @State private var showFilePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
-    @State private var pendingAttachmentIds: [String] = []
-    @State private var isUploadingAttachment: Bool = false
+    
+    private struct PendingAttachment: Identifiable {
+        let id = UUID()
+        let data: Data
+        let filename: String
+        let mimeType: String
+    }
+    
+    @State private var pendingAttachments: [PendingAttachment] = []
     @State private var attachmentUploadError: String?
     
     // Voice Mode state (integrated in chat, not separate view)
@@ -394,13 +401,13 @@ struct ChatView: View {
                 Button("Cancel", role: .cancel) { }
             }
             .photosPicker(isPresented: $showImagePicker, selection: $selectedPhotoItem, matching: .images)
-            .onChange(of: selectedPhotoItem) { oldValue, newValue in
+            .onChange(of: selectedPhotoItem) { _, newValue in
                 Task {
                     if let newValue = newValue,
                        let data = try? await newValue.loadTransferable(type: Data.self),
                        let image = UIImage(data: data) {
-                        await uploadImageAttachment(image)
-                        selectedPhotoItem = nil
+                        await addImageAttachment(image)
+                        await MainActor.run { selectedPhotoItem = nil }
                     }
                 }
             }
@@ -410,7 +417,7 @@ struct ChatView: View {
             .onChange(of: selectedImage) { _, newValue in
                 guard let image = newValue else { return }
                 Task {
-                    await uploadImageAttachment(image)
+                    await addImageAttachment(image)
                     await MainActor.run { selectedImage = nil }
                 }
             }
@@ -418,7 +425,7 @@ struct ChatView: View {
                 switch result {
                 case .success(let url):
                     Task {
-                        await uploadFileAttachment(from: url)
+                        await addFileAttachment(from: url)
                     }
                 case .failure(let error):
                     print("File selection error: \(error)")
@@ -536,23 +543,15 @@ struct ChatView: View {
                     .background(Color.white.opacity(0.1))
                     .clipShape(Circle())
             }
-            .disabled(isUploadingAttachment)
             .overlay(alignment: .topTrailing) {
-                if !pendingAttachmentIds.isEmpty {
-                    Text("\(pendingAttachmentIds.count)")
+                if !pendingAttachments.isEmpty {
+                    Text("\(pendingAttachments.count)")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.black)
                         .padding(6)
                         .background(Color.white)
                         .clipShape(Circle())
                         .offset(x: 6, y: -6)
-                }
-            }
-            .overlay {
-                if isUploadingAttachment {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(0.8)
                 }
             }
             
@@ -604,7 +603,7 @@ struct ChatView: View {
                     .foregroundColor(.white)
                     .focused($isInputFocused)
                     .lineLimit(1...4)
-                    .disabled(conversationManager.isLoading || isUploadingAttachment)
+                    .disabled(conversationManager.isLoading)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.sentences)
                     .onSubmit { if !inputText.isEmpty { sendMessage() } }
@@ -688,7 +687,6 @@ struct ChatView: View {
                     .background(Color.white)
                     .clipShape(Circle())
             }
-            .disabled(isUploadingAttachment)
         } else if isVoiceModeActive {
             // End voice mode button - shows different states
             Button(action: {
@@ -837,44 +835,9 @@ struct ChatView: View {
         }
     }
     
-    // MARK: - Attachments (Uploads API)
+    // MARK: - Attachments (multipart /v1/chat/completions)
     
-    private func uploadAttachment(data: Data, filename: String, mimeType: String) async {
-        let address = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !address.isEmpty else {
-            await MainActor.run {
-                attachmentUploadError = "Server address is not configured."
-            }
-            return
-        }
-        
-        await MainActor.run {
-            isUploadingAttachment = true
-            attachmentUploadError = nil
-        }
-        
-        do {
-            let uploadId = try await NetworkManager.shared.upload(
-                to: address,
-                data: data,
-                filename: filename,
-                mimeType: mimeType
-            )
-            await MainActor.run {
-                pendingAttachmentIds.append(uploadId)
-            }
-        } catch {
-            await MainActor.run {
-                attachmentUploadError = error.localizedDescription
-            }
-        }
-        
-        await MainActor.run {
-            isUploadingAttachment = false
-        }
-    }
-    
-    private func uploadImageAttachment(_ image: UIImage) async {
+    private func addImageAttachment(_ image: UIImage) async {
         // Prefer JPEG for predictable server inlining behavior and smaller size.
         guard let data = image.jpegData(compressionQuality: 0.9) else {
             await MainActor.run {
@@ -884,10 +847,12 @@ struct ChatView: View {
         }
         
         let filename = "image-\(Int(Date().timeIntervalSince1970)).jpg"
-        await uploadAttachment(data: data, filename: filename, mimeType: "image/jpeg")
+        await MainActor.run {
+            pendingAttachments.append(PendingAttachment(data: data, filename: filename, mimeType: "image/jpeg"))
+        }
     }
     
-    private func uploadFileAttachment(from url: URL) async {
+    private func addFileAttachment(from url: URL) async {
         var didStartAccessing = false
         if url.startAccessingSecurityScopedResource() {
             didStartAccessing = true
@@ -903,7 +868,9 @@ struct ChatView: View {
             let filename = url.lastPathComponent.isEmpty ? "file" : url.lastPathComponent
             let ext = url.pathExtension
             let mimeType = UTType(filenameExtension: ext)?.preferredMIMEType ?? "application/octet-stream"
-            await uploadAttachment(data: data, filename: filename, mimeType: mimeType)
+            await MainActor.run {
+                pendingAttachments.append(PendingAttachment(data: data, filename: filename, mimeType: mimeType))
+            }
         } catch {
             await MainActor.run {
                 attachmentUploadError = error.localizedDescription
@@ -913,11 +880,11 @@ struct ChatView: View {
     
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let attachmentIds = pendingAttachmentIds
-        conversationManager.sendMessage(inputText, attachmentIds: attachmentIds)
+        let files = pendingAttachments.map { ChatCompletionFile(filename: $0.filename, mimeType: $0.mimeType, data: $0.data) }
+        conversationManager.sendMessage(inputText, files: files)
         inputText = ""
         inputTextHeight = 28
-        pendingAttachmentIds.removeAll()
+        pendingAttachments.removeAll()
         attachmentUploadError = nil
         
         // Note: Voice mode now uses WebSocket which handles TTS internally

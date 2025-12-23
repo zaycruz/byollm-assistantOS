@@ -13,14 +13,9 @@ struct ChatMessage: Codable {
     let content: String
 }
 
-struct ChatAttachment: Codable {
-    let id: String
-}
-
 struct ChatRequest: Codable {
     let model: String
     let messages: [ChatMessage]
-    let attachments: [ChatAttachment]?
     let provider: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -31,7 +26,7 @@ struct ChatRequest: Codable {
     let includeReasoning: Bool?  // Request reasoning content in response
     
     enum CodingKeys: String, CodingKey {
-        case model, messages, attachments, provider, temperature, stream
+        case model, messages, provider, temperature, stream
         case maxTokens = "max_tokens"
         case safetyLevel = "safety_level"
         case reasoningEffort = "reasoning_effort"
@@ -43,7 +38,6 @@ struct ChatRequest: Codable {
     init(
         model: String,
         messages: [ChatMessage],
-        attachments: [ChatAttachment]? = nil,
         provider: String? = nil,
         temperature: Double?,
         stream: Bool,
@@ -54,7 +48,6 @@ struct ChatRequest: Codable {
     ) {
         self.model = model
         self.messages = messages
-        self.attachments = attachments
         self.provider = provider
         self.temperature = temperature
         self.maxTokens = nil  // Remove token limit
@@ -66,15 +59,11 @@ struct ChatRequest: Codable {
     }
 }
 
-// MARK: - Upload Models
-struct UploadCreateResponse: Codable {
-    let id: String?
-    let uploadId: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case id
-        case uploadId = "upload_id"
-    }
+/// Local file/image attachment for multipart chat requests.
+struct ChatCompletionFile {
+    let filename: String
+    let mimeType: String
+    let data: Data
 }
 
 struct ChatResponse: Codable {
@@ -246,59 +235,62 @@ class NetworkManager {
         return response.data.map { $0.id }
     }
     
-    // MARK: - Uploads
+    // MARK: - Chat (JSON or multipart with attachments)
     
-    /// Upload a file (or image) to the server and return the upload id.
-    /// Endpoint: POST /v1/uploads (multipart form field name: file)
-    func upload(
-        to serverAddress: String,
-        data: Data,
-        filename: String,
-        mimeType: String
-    ) async throws -> String {
-        let urlString = try normalizeServerAddress(serverAddress)
-        guard let url = URL(string: "\(urlString)/v1/uploads") else {
-            throw NetworkError.invalidURL
+    private func buildChatRequest(
+        model: String,
+        messages: [ChatMessage],
+        systemPrompt: String?,
+        provider: String?,
+        temperature: Double,
+        stream: Bool,
+        safetyLevel: String?,
+        reasoningEffort: String?,
+        conversationId: String?
+    ) -> ChatRequest {
+        var allMessages: [ChatMessage] = []
+        if let systemPrompt, !systemPrompt.isEmpty {
+            allMessages.append(ChatMessage(role: "system", content: systemPrompt))
         }
+        allMessages.append(contentsOf: messages)
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 60.0
-        
-        let boundary = "Boundary-\(UUID().uuidString)"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        
+        return ChatRequest(
+            model: model,
+            messages: allMessages,
+            provider: provider,
+            temperature: temperature,
+            stream: stream,
+            safetyLevel: safetyLevel,
+            reasoningEffort: reasoningEffort,
+            conversationId: conversationId,
+            includeReasoning: reasoningEffort != nil ? true : nil
+        )
+    }
+    
+    private func makeMultipartBody(
+        boundary: String,
+        payloadJson: String,
+        files: [ChatCompletionFile]
+    ) -> Data {
         var body = Data()
+        
+        // payload (required): JSON string
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        body.append(data)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"payload\"\r\n\r\n".data(using: .utf8)!)
+        body.append(payloadJson.data(using: .utf8)!)
+        body.append("\r\n".data(using: .utf8)!)
         
-        request.httpBody = body
-        
-        let (responseData, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NetworkError.invalidResponse
+        // files (optional, repeated)
+        for file in files {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"files\"; filename=\"\(file.filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(file.mimeType)\r\n\r\n".data(using: .utf8)!)
+            body.append(file.data)
+            body.append("\r\n".data(using: .utf8)!)
         }
         
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw NetworkError.serverError(statusCode: httpResponse.statusCode)
-        }
-        
-        if let decoded = try? JSONDecoder().decode(UploadCreateResponse.self, from: responseData) {
-            if let id = decoded.id, !id.isEmpty { return id }
-            if let id = decoded.uploadId, !id.isEmpty { return id }
-        }
-        
-        // Fallback: best-effort parse `{ "id": "upl_..." }`
-        if let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] {
-            if let id = json["id"] as? String { return id }
-            if let id = json["upload_id"] as? String { return id }
-        }
-        
-        throw NetworkError.invalidResponse
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        return body
     }
     
     // Send chat message
@@ -306,7 +298,7 @@ class NetworkManager {
         to serverAddress: String,
         model: String,
         messages: [ChatMessage],
-        attachmentIds: [String]? = nil,
+        files: [ChatCompletionFile] = [],
         systemPrompt: String? = nil,
         provider: String? = nil,
         safetyLevel: String? = nil,
@@ -322,36 +314,39 @@ class NetworkManager {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 60.0
         
-        // Build messages array with optional system prompt
-        var allMessages: [ChatMessage] = []
-        if let systemPrompt = systemPrompt, !systemPrompt.isEmpty {
-            allMessages.append(ChatMessage(role: "system", content: systemPrompt))
-        }
-        allMessages.append(contentsOf: messages)
-        
-        let chatRequest = ChatRequest(
+        let chatRequest = buildChatRequest(
             model: model,
-            messages: allMessages,
-            attachments: attachmentIds?.map { ChatAttachment(id: $0) },
+            messages: messages,
+            systemPrompt: systemPrompt,
             provider: provider,
             temperature: temperature,
             stream: false,
             safetyLevel: safetyLevel,
             reasoningEffort: reasoningEffort,
-            conversationId: conversationId,
-            includeReasoning: reasoningEffort != nil ? true : nil
+            conversationId: conversationId
         )
         
-        request.httpBody = try JSONEncoder().encode(chatRequest)
-        
-        // Debug: Print the actual JSON being sent
-        if let jsonData = request.httpBody,
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("Sending request to server:")
-            print(jsonString)
+        if files.isEmpty {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(chatRequest)
+            
+            // Debug: Print the actual JSON being sent
+            if let jsonData = request.httpBody,
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("Sending request to server:")
+                print(jsonString)
+            }
+        } else {
+            let boundary = "Boundary-\(UUID().uuidString)"
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            
+            let payloadData = try JSONEncoder().encode(chatRequest)
+            let payloadJson = String(decoding: payloadData, as: UTF8.self)
+            request.httpBody = makeMultipartBody(boundary: boundary, payloadJson: payloadJson, files: files)
+            
+            print("Sending multipart request with \(files.count) file(s)")
         }
         
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -378,7 +373,7 @@ class NetworkManager {
         to serverAddress: String,
         model: String,
         messages: [ChatMessage],
-        attachmentIds: [String]? = nil,
+        files: [ChatCompletionFile] = [],
         systemPrompt: String? = nil,
         provider: String? = nil,
         safetyLevel: String? = nil,
@@ -396,36 +391,39 @@ class NetworkManager {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 120.0
         
-        // Build messages array with optional system prompt
-        var allMessages: [ChatMessage] = []
-        if let systemPrompt = systemPrompt, !systemPrompt.isEmpty {
-            allMessages.append(ChatMessage(role: "system", content: systemPrompt))
-        }
-        allMessages.append(contentsOf: messages)
-        
-        let chatRequest = ChatRequest(
+        let chatRequest = buildChatRequest(
             model: model,
-            messages: allMessages,
-            attachments: attachmentIds?.map { ChatAttachment(id: $0) },
+            messages: messages,
+            systemPrompt: systemPrompt,
             provider: provider,
             temperature: temperature,
             stream: true,
             safetyLevel: safetyLevel,
             reasoningEffort: reasoningEffort,
-            conversationId: conversationId,
-            includeReasoning: reasoningEffort != nil ? true : nil
+            conversationId: conversationId
         )
         
-        request.httpBody = try JSONEncoder().encode(chatRequest)
-        
-        // Debug: Print the actual JSON being sent
-        if let jsonData = request.httpBody,
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("Sending streaming request to server:")
-            print(jsonString)
+        if files.isEmpty {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(chatRequest)
+            
+            // Debug: Print the actual JSON being sent
+            if let jsonData = request.httpBody,
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("Sending streaming request to server:")
+                print(jsonString)
+            }
+        } else {
+            let boundary = "Boundary-\(UUID().uuidString)"
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            
+            let payloadData = try JSONEncoder().encode(chatRequest)
+            let payloadJson = String(decoding: payloadData, as: UTF8.self)
+            request.httpBody = makeMultipartBody(boundary: boundary, payloadJson: payloadJson, files: files)
+            
+            print("Sending streaming multipart request with \(files.count) file(s)")
         }
         
         let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)

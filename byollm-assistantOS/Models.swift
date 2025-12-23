@@ -209,7 +209,7 @@ class ConversationManager: ObservableObject {
         }
     }
     
-    func sendMessage(_ content: String, attachmentIds: [String] = []) {
+    func sendMessage(_ content: String, files: [ChatCompletionFile] = []) {
         let userMessage = Message(content: content, isUser: true, timestamp: Date())
         currentConversation.messages.append(userMessage)
         
@@ -270,7 +270,7 @@ class ConversationManager: ObservableObject {
                     to: serverAddress,
                     model: selectedModel,
                     messages: Array(apiMessages),
-                    attachmentIds: attachmentIds.isEmpty ? nil : attachmentIds,
+                    files: files,
                     systemPrompt: systemPrompt,
                     provider: provider,
                     safetyLevel: safetyLevel,
