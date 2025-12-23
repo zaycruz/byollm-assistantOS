@@ -1595,13 +1595,18 @@ struct MessageBubble: View {
     
     @ViewBuilder
     private func userMessageAttachmentsView(_ attachments: [MessageAttachment]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(attachments) { attachment in
-                    userAttachmentTile(attachment)
+        // Right-align attachments to match the outgoing bubble alignment.
+        HStack {
+            Spacer()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(attachments) { attachment in
+                        userAttachmentTile(attachment)
+                    }
                 }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 2)
+            .frame(width: 280, alignment: .trailing)
         }
         .frame(height: 190)
     }
