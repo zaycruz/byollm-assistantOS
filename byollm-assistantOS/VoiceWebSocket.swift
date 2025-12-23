@@ -7,6 +7,7 @@
 
 import Foundation
 import AVFoundation
+import Darwin
 
 class VoiceWebSocketManager: NSObject, ObservableObject {
     
@@ -29,19 +30,52 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     // Playback
     private var playbackEngine = AVAudioEngine()
     private var playerNode = AVAudioPlayerNode()
-    private var playbackFormat: AVAudioFormat?
     private var wavAudioPlayer: AVAudioPlayer?  // For WAV fallback playback
+    
+    // Serialize all playback + counters to avoid races
+    private let audioQueue = DispatchQueue(label: "VoiceWebSocketManager.audio")
+    private let audioQueueKey = DispatchSpecificKey<Void>()
+    private var playbackSampleRate: Double = 24000
+    private var playbackGraphConnected: Bool = false
+    private var wavIsPlaying: Bool = false
+    private var pendingPCMBufferCount: Int = 0
+    private var serverTurnComplete: Bool = false
+    
+    private var locallyInterrupted: Bool = false
+    private var didNotifyTurnComplete: Bool = false
+    
+    // ChatGPT-style "drop stale chunks" gating by response_id
+    private var activeResponseId: String?
+    private var awaitingNewResponseId: Bool = true
+    private var cancelledResponseIds: [String] = []
+    private let cancelledResponseIdMaxCount: Int = 8
+    
+    // Gating for mic send + audio playback to avoid "late chunks" after stop
+    private let gateQueue = DispatchQueue(label: "VoiceWebSocketManager.gate")
+    private let gateQueueKey = DispatchSpecificKey<Void>()
+    private var gateIsListening: Bool = false
+    private var gateIsSpeaking: Bool = false
+    private var gateAcceptIncomingAudio: Bool = true
+    
+    // Lock-free gate reads for realtime audio callbacks.
+    // Avoids `gateQueue.sync` from the render/tap threads.
+    private var gateBits: Int32 = 0
+    private let gateBitListening: Int32 = 1 << 0
+    private let gateBitSpeaking: Int32 = 1 << 1
+    private let gateBitAcceptIncomingAudio: Int32 = 1 << 2
 
     // Client-side barge-in (interruption) fallback
     // If the server doesn't emit `interrupted`, we still stop audio immediately
     private var bargeInFrameCount: Int = 0
     private var lastBargeInTime: TimeInterval = 0
-    private let bargeInLevelThreshold: Float = 0.06 // avgLevel (0..1), pre-amplification
-    private let bargeInMinFrames: Int = 3           // ~300ms at 4096 buffer / ~0.1s callbacks
+    // NOTE: Threshold is intentionally conservative to avoid false barge-in from speaker bleed.
+    private let bargeInLevelThreshold: Float = 0.12 // avgLevel (0..1), pre-amplification
+    private let bargeInMinFrames: Int = 3           // ~250-300ms at current tap cadence
     private let bargeInCooldownSeconds: TimeInterval = 1.0
     
     private var serverURL: URL?
     private var conversationId: String?
+    private var duplexAudioSessionConfigured: Bool = false
     
     // Callbacks
     var onResponseComplete: (() -> Void)?
@@ -52,7 +86,150 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     
     override init() {
         super.init()
+        gateQueue.setSpecific(key: gateQueueKey, value: ())
+        audioQueue.setSpecific(key: audioQueueKey, value: ())
+        // Ensure atomic gate bits match default boolean values.
+        // Defaults: listening=false, speaking=false, acceptIncomingAudio=true
+        setGate(isListening: false, isSpeaking: false, acceptIncomingAudio: true, synchronously: true)
         setupPlayback()
+    }
+    
+    // MARK: - Gate helpers (thread-safe reads from audio callback)
+    
+    private func setGate(
+        isListening: Bool? = nil,
+        isSpeaking: Bool? = nil,
+        acceptIncomingAudio: Bool? = nil,
+        synchronously: Bool = false
+    ) {
+        let apply = { [weak self] in
+            guard let self else { return }
+            if let isListening {
+                self.gateIsListening = isListening
+                self.atomicSetGateBit(self.gateBitListening, enabled: isListening)
+            }
+            if let isSpeaking {
+                self.gateIsSpeaking = isSpeaking
+                self.atomicSetGateBit(self.gateBitSpeaking, enabled: isSpeaking)
+            }
+            if let acceptIncomingAudio {
+                self.gateAcceptIncomingAudio = acceptIncomingAudio
+                self.atomicSetGateBit(self.gateBitAcceptIncomingAudio, enabled: acceptIncomingAudio)
+            }
+        }
+        
+        if DispatchQueue.getSpecific(key: gateQueueKey) != nil {
+            apply()
+            return
+        }
+        
+        if synchronously {
+            gateQueue.sync(execute: apply)
+        } else {
+            gateQueue.async(execute: apply)
+        }
+    }
+    
+    @inline(__always)
+    private func atomicLoadGateBits() -> Int32 {
+        // Atomic read using OSAtomic (deprecated but lock-free and available).
+        // We use it to avoid any blocking on realtime audio callback threads.
+        OSAtomicAdd32Barrier(0, &gateBits)
+    }
+    
+    @inline(__always)
+    private func atomicSetGateBit(_ bit: Int32, enabled: Bool) {
+        while true {
+            let old = atomicLoadGateBits()
+            let new = enabled ? (old | bit) : (old & ~bit)
+            if old == new { return }
+            if OSAtomicCompareAndSwap32Barrier(old, new, &gateBits) {
+                return
+            }
+        }
+    }
+    
+    @inline(__always)
+    private func atomicGateIsListening() -> Bool {
+        (atomicLoadGateBits() & gateBitListening) != 0
+    }
+    
+    @inline(__always)
+    private func atomicGateIsSpeaking() -> Bool {
+        (atomicLoadGateBits() & gateBitSpeaking) != 0
+    }
+    
+    @inline(__always)
+    private func atomicGateAcceptIncomingAudio() -> Bool {
+        (atomicLoadGateBits() & gateBitAcceptIncomingAudio) != 0
+    }
+    
+    private func canSendMicAudioToServer() -> Bool {
+        // Only send mic while the server is explicitly listening and we're not speaking locally.
+        // This avoids echo / self-interruption while TTS is playing.
+        atomicGateIsListening() && !atomicGateIsSpeaking()
+    }
+    
+    private func canPlayIncomingAudio() -> Bool {
+        atomicGateAcceptIncomingAudio()
+    }
+    
+    private func withAudioQueueSync(_ block: () -> Void) {
+        if DispatchQueue.getSpecific(key: audioQueueKey) != nil {
+            block()
+        } else {
+            audioQueue.sync(execute: block)
+        }
+    }
+    
+    private func withAudioQueueAsync(_ block: @escaping () -> Void) {
+        if DispatchQueue.getSpecific(key: audioQueueKey) != nil {
+            block()
+        } else {
+            audioQueue.async(execute: block)
+        }
+    }
+    
+    private func notifyTurnCompleteIfNeeded() {
+        guard !didNotifyTurnComplete else { return }
+        didNotifyTurnComplete = true
+        onResponseComplete?()
+    }
+    
+    private func normalizeResponseId(_ value: Any?) -> String? {
+        if let s = value as? String { return s }
+        if let i = value as? Int { return String(i) }
+        if let d = value as? Double { return String(Int(d)) }
+        return nil
+    }
+    
+    private func parseSampleRate(_ value: Any?) -> Double {
+        if let d = value as? Double { return d }
+        if let i = value as? Int { return Double(i) }
+        if let s = value as? String, let d = Double(s) { return d }
+        return 24000
+    }
+    
+    private func markResponseIdCancelled(_ responseId: String?) {
+        guard let responseId, !responseId.isEmpty else { return }
+        cancelledResponseIds.append(responseId)
+        if cancelledResponseIds.count > cancelledResponseIdMaxCount {
+            cancelledResponseIds.removeFirst(cancelledResponseIds.count - cancelledResponseIdMaxCount)
+        }
+    }
+    
+    private func isResponseIdCancelled(_ responseId: String) -> Bool {
+        cancelledResponseIds.contains(responseId)
+    }
+    
+    private func advanceActiveResponseId(toNext nextResponseId: String?) {
+        if let nextResponseId, !nextResponseId.isEmpty {
+            activeResponseId = nextResponseId
+            awaitingNewResponseId = false
+        } else {
+            // We don't know the next id yet; accept the next non-cancelled response_id we see.
+            awaitingNewResponseId = true
+        }
     }
     
     func configure(serverAddress: String) {
@@ -93,10 +270,16 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
         receiveMessage()
         isConnected = true
         status = "Connecting..."
+        // Configure duplex session early to avoid mid-stream mode switches.
+        configureDuplexAudioSessionIfNeeded()
     }
     
     func disconnect() {
         print("[WS] Disconnecting")
+        // Best-effort stop any in-flight generation/audio server-side
+        send(["type": "interrupt"])
+        locallyInterrupted = true
+        setGate(isListening: false, isSpeaking: false, acceptIncomingAudio: false, synchronously: true)
         webSocket?.cancel(with: .normalClosure, reason: nil)
         webSocket = nil
         isConnected = false
@@ -122,9 +305,19 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
         print("[WS] Starting listening")
         transcribedText = ""
         responseText = ""
+        locallyInterrupted = false
+        didNotifyTurnComplete = false
+        awaitingNewResponseId = true
+        withAudioQueueSync {
+            self.serverTurnComplete = false
+            self.pendingPCMBufferCount = 0
+            self.wavIsPlaying = false
+        }
+        // Don't accept any late audio from a previous turn while we're starting a new one.
+        setGate(isListening: false, isSpeaking: false, acceptIncomingAudio: false, synchronously: true)
         
-        // Configure audio session
-        configureAudioSession(forRecording: true)
+        // Configure duplex audio session (do not switch modes mid-conversation)
+        configureDuplexAudioSessionIfNeeded()
         
         // Start capturing audio
         startAudioCapture()
@@ -141,8 +334,31 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
         // Tell server to stop
         send(["type": "stop"])
         
-        // Stop capturing
-        stopAudioCapture()
+        // Stop sending audio immediately; keep the tap installed for barge-in / levels until voice mode ends.
+        setGate(isListening: false)
+    }
+    
+    /// Immediately stops local audio playback and best-effort interrupts server generation.
+    /// Voice mode stays connected; caller can decide whether to resume listening.
+    func interruptCurrentTurn() {
+        print("[WS] Interrupt requested -> stopping playback and ignoring further audio")
+        // Cancel anything from the currently-active response id (if known)
+        markResponseIdCancelled(activeResponseId)
+        advanceActiveResponseId(toNext: nil)
+        
+        locallyInterrupted = true
+        isProcessing = false
+        isSpeaking = false
+        setGate(isListening: false, isSpeaking: false, acceptIncomingAudio: false, synchronously: true)
+        
+        // Stop local playback right away
+        stopAllPlayback()
+        
+        // Best-effort notify server (server may ignore if unsupported)
+        send(["type": "interrupt"])
+        
+        // Allow UI to resume listening (after its own delay) if desired
+        notifyTurnCompleteIfNeeded()
     }
     
     func clearHistory() {
@@ -151,17 +367,17 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
         responseText = ""
     }
     
-    // MARK: - Audio Session
+    // MARK: - Audio Session (Duplex)
     
-    private func configureAudioSession(forRecording: Bool) {
+    /// Configure a single duplex session for always-on mic + speaker playback.
+    /// Avoid switching categories/modes mid-conversation (common source of dropouts/cutoffs).
+    private func configureDuplexAudioSessionIfNeeded() {
+        guard !duplexAudioSessionConfigured else { return }
         do {
             let session = AVAudioSession.sharedInstance()
-            if forRecording {
-                try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
-            } else {
-                try session.setCategory(.playback, mode: .default, options: [.duckOthers])
-            }
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
             try session.setActive(true)
+            duplexAudioSessionConfigured = true
         } catch {
             print("[WS] Audio session error: \(error)")
         }
@@ -255,7 +471,10 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             self.audioLevel = min(1.0, avgLevel * 3)  // Amplify for visibility
         }
         
-        // Send PCM16 bytes over WebSocket
+        // Send PCM16 bytes over WebSocket only when actively listening.
+        // This avoids echo / "self-barge-in" while assistant audio is playing.
+        guard canSendMicAudioToServer() else { return }
+        
         let byteCount = frameLength * 2  // 2 bytes per Int16
         let data = Data(bytes: int16Data[0], count: byteCount)
         
@@ -267,7 +486,8 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     }
 
     private func handleLocalBargeInIfNeeded(avgLevel: Float) {
-        guard isSpeaking else {
+        // Use lock-free gate reads (realtime-safe) instead of queue sync on the audio thread.
+        guard atomicGateIsSpeaking() else {
             bargeInFrameCount = 0
             return
         }
@@ -285,16 +505,11 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
 
                 print("[WS] Local barge-in detected (avgLevel=\(avgLevel)) -> stopping playback")
 
-                // Stop audio immediately on main thread
+                // Stop audio immediately and best-effort interrupt server
                 DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.status = "Interrupted"
-                    self.isSpeaking = false
-                    self.stopAllPlayback()
+                    self?.status = "Interrupted"
+                    self?.interruptCurrentTurn()
                 }
-
-                // Best-effort notify server (server may ignore if unsupported)
-                send(["type": "interrupt"])
             }
         } else {
             // decay quickly so brief blips don't accumulate forever
@@ -324,103 +539,136 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     // MARK: - Audio Playback (Low-Latency Streaming)
     
     private func setupPlayback() {
-        // 24kHz mono for Kokoro TTS output
-        playbackFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 24000,
-            channels: 1,
-            interleaved: false
-        )
-        
         playbackEngine.attach(playerNode)
-        if let format = playbackFormat {
-            playbackEngine.connect(playerNode, to: playbackEngine.mainMixerNode, format: format)
-        }
     }
     
-    private func startPlaybackEngine() {
-        guard !playbackEngine.isRunning else { return }
+    private func startPlaybackEngineIfNeeded(sampleRate: Double) {
+        // Must be called on audioQueue
+        guard DispatchQueue.getSpecific(key: audioQueueKey) != nil else {
+            assertionFailure("startPlaybackEngineIfNeeded(sampleRate:) must run on audioQueue")
+            return
+        }
         
-        configureAudioSession(forRecording: false)
+        // Ensure graph is connected with a stable format
+        if !playbackGraphConnected || playbackSampleRate != sampleRate {
+            // Stop before reconnect
+            if playbackEngine.isRunning {
+                playbackEngine.stop()
+            }
+            playerNode.stop()
+            playerNode.reset()
+            
+            playbackEngine.disconnectNodeOutput(playerNode)
+            
+            guard let format = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: sampleRate,
+                channels: 1,
+                interleaved: false
+            ) else {
+                print("[WS] Failed to create playback format (Int16) @ \(sampleRate)Hz")
+                return
+            }
+            
+            playbackEngine.connect(playerNode, to: playbackEngine.mainMixerNode, format: format)
+            playbackSampleRate = sampleRate
+            playbackGraphConnected = true
+        }
         
-        do {
-            try playbackEngine.start()
+        if !playbackEngine.isRunning {
+            do {
+                try playbackEngine.start()
+                print("[WS] Playback engine started")
+            } catch {
+                print("[WS] Playback engine error: \(error)")
+            }
+        }
+        
+        if !playerNode.isPlaying {
             playerNode.play()
-            print("[WS] Playback engine started")
-        } catch {
-            print("[WS] Playback engine error: \(error)")
         }
     }
     
     private func stopPlayback() {
-        // Stop all audio
-        playerNode.stop()
-        if playbackEngine.isRunning {
-            playbackEngine.stop()
+        withAudioQueueAsync { [weak self] in
+            guard let self else { return }
+            self.playerNode.stop()
+            if self.playbackEngine.isRunning {
+                self.playbackEngine.stop()
+            }
+            self.playbackGraphConnected = false
+            self.wavIsPlaying = false
+            self.pendingPCMBufferCount = 0
+            self.serverTurnComplete = false
+            print("[WS] Playback engine stopped")
         }
-        print("[WS] Playback engine stopped")
     }
     
     /// Play streaming PCM16 chunk (24kHz mono)
     private func playPCMChunk(_ data: Data, sampleRate: Double = 24000) {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: sampleRate,
-            channels: 1,
-            interleaved: false
-        ) else { return }
+        guard data.count % 2 == 0 else { return }
         
-        // Convert Data (Int16) to Float32 buffer
-        let int16Count = data.count / 2
-        let frameCount = AVAudioFrameCount(int16Count)
-        
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
-        buffer.frameLength = frameCount
-        
-        let floatData = buffer.floatChannelData![0]
-        data.withUnsafeBytes { rawBuffer in
-            let int16Buffer = rawBuffer.bindMemory(to: Int16.self)
-            for i in 0..<int16Count {
-                floatData[i] = Float(int16Buffer[i]) / 32768.0
+        withAudioQueueAsync { [weak self] in
+            guard let self else { return }
+            guard self.canPlayIncomingAudio() else { return }
+            
+            guard let format = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: sampleRate,
+                channels: 1,
+                interleaved: false
+            ) else { return }
+            
+            let frames = AVAudioFrameCount(data.count / 2)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return }
+            buffer.frameLength = frames
+            
+            data.withUnsafeBytes { raw in
+                if let base = raw.baseAddress, let dst = buffer.int16ChannelData?[0] {
+                    memcpy(dst, base, data.count)
+                }
+            }
+            
+            self.startPlaybackEngineIfNeeded(sampleRate: sampleRate)
+            
+            self.pendingPCMBufferCount += 1
+            self.playerNode.scheduleBuffer(buffer) { [weak self] in
+                guard let self else { return }
+                self.withAudioQueueAsync {
+                    self.pendingPCMBufferCount = max(0, self.pendingPCMBufferCount - 1)
+                    self.maybeFinishTurnIfReady()
+                }
             }
         }
-        
-        // Start engine if needed
-        startPlaybackEngine()
-        
-        // Schedule for seamless playback
-        playerNode.scheduleBuffer(buffer, completionHandler: nil)
     }
     
     /// Play full WAV audio (fallback)
     private func playWAVAudio(_ data: Data) {
-        // Stop any existing WAV playback
-        wavAudioPlayer?.stop()
-        
-        do {
-            wavAudioPlayer = try AVAudioPlayer(data: data)
-            wavAudioPlayer?.prepareToPlay()
-            wavAudioPlayer?.play()
+        withAudioQueueAsync { [weak self] in
+            guard let self else { return }
+            guard self.canPlayIncomingAudio() else { return }
             
-            print("[WS] WAV playback started, duration: \(wavAudioPlayer?.duration ?? 0)s")
+            // Stop any existing WAV playback
+            self.wavAudioPlayer?.stop()
+            self.wavAudioPlayer = nil
+            self.wavIsPlaying = false
             
-            // Monitor completion in background
-            DispatchQueue.global().async { [weak self] in
-                while self?.wavAudioPlayer?.isPlaying == true {
-                    Thread.sleep(forTimeInterval: 0.1)
-                }
+            do {
+                self.wavAudioPlayer = try AVAudioPlayer(data: data)
+                self.wavAudioPlayer?.delegate = self
+                self.wavAudioPlayer?.prepareToPlay()
+                self.wavIsPlaying = true
+                self.wavAudioPlayer?.play()
                 
-                DispatchQueue.main.async {
-                    // Only call complete if we weren't interrupted
-                    if self?.isSpeaking == true {
-                        self?.isSpeaking = false
-                        self?.onResponseComplete?()
-                    }
+                print("[WS] WAV playback started, duration: \(self.wavAudioPlayer?.duration ?? 0)s")
+            } catch {
+                print("[WS] WAV playback error: \(error)")
+                self.wavIsPlaying = false
+                DispatchQueue.main.async { [weak self] in
+                    self?.isSpeaking = false
+                    self?.setGate(isSpeaking: false, synchronously: true)
                 }
             }
-        } catch {
-            print("[WS] WAV playback error: \(error)")
-            isSpeaking = false
         }
     }
     
@@ -470,6 +718,32 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     private func processEvent(type: String, event: [String: Any]) {
         print("[WS] Event: \(type)")
         
+        let responseId = normalizeResponseId(event["response_id"])
+        let nextResponseId = normalizeResponseId(event["next_response_id"])
+        
+        // ChatGPT-style "drop stale chunks" rule:
+        // - Maintain activeResponseId
+        // - If an event has response_id != activeResponseId, ignore it (esp. audio)
+        // - On "interrupted", move activeResponseId forward to next_response_id (if provided)
+        // We always process "ready" + interruption/error signals, but gate content-bearing events.
+        let alwaysProcessTypes: Set<String> = ["ready", "interrupted", "error", "tts_error", "llm_error", "stt_error"]
+        
+        if let responseId, !alwaysProcessTypes.contains(type) {
+            if isResponseIdCancelled(responseId) {
+                // Drop anything from cancelled responses (buffering/jitter safety)
+                return
+            }
+            
+            if awaitingNewResponseId {
+                // First valid response_id we see becomes active
+                activeResponseId = responseId
+                awaitingNewResponseId = false
+            } else if let activeResponseId, responseId != activeResponseId {
+                // Stale chunk/event from a previous response; drop it.
+                return
+            }
+        }
+        
         switch type {
             
         case "ready":
@@ -477,14 +751,31 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             status = "Ready"
             isConnected = true
             print("[WS] Ready with conversation: \(conversationId ?? "unknown")")
+            // If server provides an initial next_response_id, use it to gate immediately.
+            if let nextResponseId {
+                advanceActiveResponseId(toNext: nextResponseId)
+            } else {
+                awaitingNewResponseId = true
+            }
             
         case "listening":
             isListening = true
             status = "Listening..."
+            locallyInterrupted = false
+            didNotifyTurnComplete = false
+            withAudioQueueAsync { [weak self] in
+                guard let self else { return }
+                self.serverTurnComplete = false
+                self.pendingPCMBufferCount = 0
+                self.wavIsPlaying = false
+            }
+            // While listening, we don't expect any TTS audio from the server.
+            setGate(isListening: true, acceptIncomingAudio: false, synchronously: true)
             
         case "stopped":
             isListening = false
             status = "Processing..."
+            setGate(isListening: false, synchronously: true)
             
         case "transcribing":
             isProcessing = true
@@ -502,11 +793,12 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             status = "No speech detected"
             isProcessing = false
             // Resume listening
-            onResponseComplete?()
+            notifyTurnCompleteIfNeeded()
             
         case "generating":
             status = "Generating..."
             responseText = ""
+            isProcessing = true
             
         case "text_delta":
             // Streaming text from LLM
@@ -523,14 +815,17 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             }
             
         case "synthesizing":
+            guard !locallyInterrupted else { break }
             status = "Speaking..."
             isSpeaking = true
+            setGate(isSpeaking: true, acceptIncomingAudio: true, synchronously: true)
             
         case "audio_chunk":
             // Streaming PCM audio chunks
+            guard !locallyInterrupted, canPlayIncomingAudio() else { break }
             if let b64 = event["data"] as? String,
                let audioData = Data(base64Encoded: b64) {
-                let sampleRate = (event["sample_rate"] as? Double) ?? 24000
+                let sampleRate = parseSampleRate(event["sample_rate"])
                 playPCMChunk(audioData, sampleRate: sampleRate)
             }
             
@@ -540,6 +835,7 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             
         case "audio":
             // Full WAV audio (fallback)
+            guard !locallyInterrupted, canPlayIncomingAudio() else { break }
             if let b64 = event["data"] as? String,
                let audioData = Data(base64Encoded: b64) {
                 print("[WS] Playing WAV audio: \(audioData.count) bytes")
@@ -548,10 +844,21 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             
         case "complete":
             isProcessing = false
-            isSpeaking = false
             status = "Complete"
-            print("[WS] Turn complete")
-            onResponseComplete?()
+            print("[WS] Turn complete (server) -> waiting for playback drain")
+            withAudioQueueAsync { [weak self] in
+                guard let self else { return }
+                self.serverTurnComplete = true
+                self.maybeFinishTurnIfReady()
+            }
+            // Keep accepting any late-arriving audio chunks for this turn; we'll resume listening
+            // only after playback drains.
+            setGate(isListening: false, synchronously: true)
+            // Mark this response id cancelled so late chunks can't revive audio after we drain.
+            markResponseIdCancelled(responseId ?? activeResponseId)
+            // If server tells us the next response id, advance immediately (drop stale chunks).
+            advanceActiveResponseId(toNext: nextResponseId)
+            maybeFinishTurnIfReady()
             
         case "interrupted":
             print("[WS] Interrupted - stopping audio immediately")
@@ -560,7 +867,13 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             status = "Interrupted"
             
             // CRITICAL: Immediately stop all queued audio
+            markResponseIdCancelled(responseId ?? activeResponseId)
+            // Move activeResponseId forward so stale chunks from the interrupted response are dropped.
+            advanceActiveResponseId(toNext: nextResponseId)
+            locallyInterrupted = true
+            setGate(isListening: false, isSpeaking: false, acceptIncomingAudio: false, synchronously: true)
             stopAllPlayback()
+            notifyTurnCompleteIfNeeded()
             
         case "error", "tts_error", "llm_error", "stt_error":
             if let errorMsg = event["error"] as? String {
@@ -569,8 +882,12 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
             }
             isProcessing = false
             isSpeaking = false
+            markResponseIdCancelled(responseId ?? activeResponseId)
+            advanceActiveResponseId(toNext: nextResponseId)
+            locallyInterrupted = true
+            setGate(isListening: false, isSpeaking: false, acceptIncomingAudio: false, synchronously: true)
             stopAllPlayback()
-            onResponseComplete?()
+            notifyTurnCompleteIfNeeded()
             
         default:
             print("[WS] Unknown event: \(type)")
@@ -580,18 +897,68 @@ class VoiceWebSocketManager: NSObject, ObservableObject {
     // MARK: - Interruption Handling
     
     private func stopAllPlayback() {
-        // Stop PCM streaming playback (AVAudioPlayerNode)
-        playerNode.stop()
-        
-        // Restart the player for next response
-        if playbackEngine.isRunning {
-            playerNode.play()
+        withAudioQueueSync { [weak self] in
+            guard let self else { return }
+            
+            // Stop PCM streaming playback (AVAudioPlayerNode) and drop queued buffers.
+            self.playerNode.stop()
+            self.playerNode.reset()
+            self.pendingPCMBufferCount = 0
+            
+            // Stop WAV playback (AVAudioPlayer)
+            self.wavAudioPlayer?.stop()
+            self.wavAudioPlayer = nil
+            self.wavIsPlaying = false
+            
+            // Keep engine running for low latency; ensure player is armed for next turn.
+            if self.playbackEngine.isRunning, !self.playerNode.isPlaying {
+                self.playerNode.play()
+            }
+            
+            print("[WS] All audio playback stopped")
+        }
+    }
+    
+    private func maybeFinishTurnIfReady() {
+        // Must be evaluated on audioQueue to avoid races with scheduleBuffer completions.
+        guard DispatchQueue.getSpecific(key: audioQueueKey) != nil else {
+            withAudioQueueAsync { [weak self] in
+                self?.maybeFinishTurnIfReady()
+            }
+            return
         }
         
-        // Stop WAV playback (AVAudioPlayer)
-        wavAudioPlayer?.stop()
-        wavAudioPlayer = nil
+        guard serverTurnComplete else { return }
+        guard pendingPCMBufferCount == 0, !wavIsPlaying else { return }
         
-        print("[WS] All audio playback stopped")
+        // Playback is drained for this turn
+        serverTurnComplete = false
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isSpeaking = false
+            // Prevent any late chunks from scheduling audio before we re-enter listening state.
+            self.setGate(isSpeaking: false, acceptIncomingAudio: false, synchronously: true)
+            self.notifyTurnCompleteIfNeeded()
+        }
+    }
+}
+
+extension VoiceWebSocketManager: AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        withAudioQueueAsync { [weak self] in
+            guard let self else { return }
+            self.wavIsPlaying = false
+            self.maybeFinishTurnIfReady()
+        }
+    }
+    
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        withAudioQueueAsync { [weak self] in
+            guard let self else { return }
+            self.wavIsPlaying = false
+            self.serverTurnComplete = true
+            self.maybeFinishTurnIfReady()
+        }
     }
 }

@@ -650,7 +650,15 @@ struct ChatView: View {
             }
         } else if isVoiceModeActive {
             // End voice mode button - shows different states
-            Button(action: { endVoiceMode() }) {
+            Button(action: {
+                // While the assistant is generating/speaking, treat this as a "Stop" (barge-in) button.
+                // Otherwise, exit voice mode entirely.
+                if voiceWebSocket.isSpeaking || voiceWebSocket.isProcessing {
+                    voiceWebSocket.interruptCurrentTurn()
+                } else {
+                    endVoiceMode()
+                }
+            }) {
                 HStack(spacing: 4) {
                     if voiceWebSocket.isSpeaking {
                         Image(systemName: "speaker.wave.2.fill")
@@ -664,7 +672,7 @@ struct ChatView: View {
                     } else {
                         VoiceModeWaveform()
                     }
-                    Text("End")
+                    Text((voiceWebSocket.isSpeaking || voiceWebSocket.isProcessing) ? "Stop" : "End")
                         .font(.system(size: 14, weight: .medium))
                 }
                 .foregroundColor(.black)
