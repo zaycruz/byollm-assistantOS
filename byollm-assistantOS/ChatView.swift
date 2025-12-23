@@ -589,34 +589,104 @@ struct ChatView: View {
     }
     
     private var normalInputContent: some View {
-        HStack(spacing: 8) {
-            // Text field
-            ZStack(alignment: .leading) {
-                if inputText.isEmpty {
-                    Text("Ask anything")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white.opacity(0.4))
-                }
-                
-                TextField("", text: $inputText, axis: .vertical)
-                    .font(.system(size: 16))
-                    .foregroundColor(.white)
-                    .focused($isInputFocused)
-                    .lineLimit(1...4)
-                    .disabled(conversationManager.isLoading)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.sentences)
-                    .onSubmit { if !inputText.isEmpty { sendMessage() } }
+        VStack(spacing: 10) {
+            if !pendingAttachments.isEmpty {
+                attachmentPreviewStrip
             }
-            .frame(maxWidth: .infinity)
             
-            // Mic button inside the glass
-            Button(action: { speechRecognizer.startRecording() }) {
-                Image(systemName: "mic")
-                    .font(.system(size: 18))
-                    .foregroundColor(.white.opacity(0.5))
+            HStack(spacing: 8) {
+                // Text field
+                ZStack(alignment: .leading) {
+                    if inputText.isEmpty {
+                        Text("Ask anything")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    
+                    TextField("", text: $inputText, axis: .vertical)
+                        .font(.system(size: 16))
+                        .foregroundColor(.white)
+                        .focused($isInputFocused)
+                        .lineLimit(1...4)
+                        .disabled(conversationManager.isLoading)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.sentences)
+                        .onSubmit { if !inputText.isEmpty { sendMessage() } }
+                }
+                .frame(maxWidth: .infinity)
+                
+                // Mic button inside the glass
+                Button(action: { speechRecognizer.startRecording() }) {
+                    Image(systemName: "mic")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white.opacity(0.5))
+                }
             }
         }
+    }
+
+    private var attachmentPreviewStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(pendingAttachments) { attachment in
+                    attachmentPreviewTile(for: attachment)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(height: 58)
+    }
+    
+    @ViewBuilder
+    private func attachmentPreviewTile(for attachment: PendingAttachment) -> some View {
+        ZStack(alignment: .topTrailing) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                )
+                .overlay {
+                    if attachment.mimeType.lowercased().hasPrefix("image/"),
+                       let image = UIImage(data: attachment.data) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .clipped()
+                            .cornerRadius(14)
+                    } else {
+                        VStack(spacing: 6) {
+                            Image(systemName: "doc.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.9))
+                            Text(attachment.filename)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                    }
+                }
+                .frame(width: 58, height: 58)
+            
+            Button(action: { removePendingAttachment(attachment.id) }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
+                    .background(
+                        Circle()
+                            .fill(Color.black.opacity(0.55))
+                    )
+            }
+            .padding(6)
+        }
+    }
+    
+    private func removePendingAttachment(_ id: UUID) {
+        pendingAttachments.removeAll { $0.id == id }
     }
     
     private var sttRecordingContent: some View {
