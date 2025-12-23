@@ -13,9 +13,14 @@ struct ChatMessage: Codable {
     let content: String
 }
 
+struct ChatAttachment: Codable {
+    let id: String
+}
+
 struct ChatRequest: Codable {
     let model: String
     let messages: [ChatMessage]
+    let attachments: [ChatAttachment]?
     let provider: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -26,7 +31,7 @@ struct ChatRequest: Codable {
     let includeReasoning: Bool?  // Request reasoning content in response
     
     enum CodingKeys: String, CodingKey {
-        case model, messages, provider, temperature, stream
+        case model, messages, attachments, provider, temperature, stream
         case maxTokens = "max_tokens"
         case safetyLevel = "safety_level"
         case reasoningEffort = "reasoning_effort"
@@ -35,9 +40,21 @@ struct ChatRequest: Codable {
     }
     
     // Initialize without max_tokens by setting it to nil
-    init(model: String, messages: [ChatMessage], provider: String? = nil, temperature: Double?, stream: Bool, safetyLevel: String?, reasoningEffort: String? = nil, conversationId: String? = nil, includeReasoning: Bool? = nil) {
+    init(
+        model: String,
+        messages: [ChatMessage],
+        attachments: [ChatAttachment]? = nil,
+        provider: String? = nil,
+        temperature: Double?,
+        stream: Bool,
+        safetyLevel: String?,
+        reasoningEffort: String? = nil,
+        conversationId: String? = nil,
+        includeReasoning: Bool? = nil
+    ) {
         self.model = model
         self.messages = messages
+        self.attachments = attachments
         self.provider = provider
         self.temperature = temperature
         self.maxTokens = nil  // Remove token limit
@@ -46,6 +63,17 @@ struct ChatRequest: Codable {
         self.reasoningEffort = reasoningEffort
         self.conversationId = conversationId
         self.includeReasoning = includeReasoning
+    }
+}
+
+// MARK: - Upload Models
+struct UploadCreateResponse: Codable {
+    let id: String?
+    let uploadId: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case uploadId = "upload_id"
     }
 }
 
@@ -151,6 +179,17 @@ class NetworkManager {
     
     private init() {}
     
+    private func normalizeServerAddress(_ serverAddress: String) throws -> String {
+        guard !serverAddress.isEmpty else {
+            throw NetworkError.invalidURL
+        }
+        var urlString = serverAddress
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://\(urlString)"
+        }
+        return urlString
+    }
+    
     // Test connection using health endpoint
     func testConnection(to serverAddress: String) async throws -> Bool {
         guard !serverAddress.isEmpty else {
@@ -191,10 +230,7 @@ class NetworkManager {
     
     // Get available models
     func getModels(from serverAddress: String) async throws -> [String] {
-        var urlString = serverAddress
-        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
-            urlString = "http://\(urlString)"
-        }
+        let urlString = try normalizeServerAddress(serverAddress)
         
         guard let url = URL(string: "\(urlString)/v1/models") else {
             throw NetworkError.invalidURL
@@ -210,11 +246,67 @@ class NetworkManager {
         return response.data.map { $0.id }
     }
     
+    // MARK: - Uploads
+    
+    /// Upload a file (or image) to the server and return the upload id.
+    /// Endpoint: POST /v1/uploads (multipart form field name: file)
+    func upload(
+        to serverAddress: String,
+        data: Data,
+        filename: String,
+        mimeType: String
+    ) async throws -> String {
+        let urlString = try normalizeServerAddress(serverAddress)
+        guard let url = URL(string: "\(urlString)/v1/uploads") else {
+            throw NetworkError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60.0
+        
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.serverError(statusCode: httpResponse.statusCode)
+        }
+        
+        if let decoded = try? JSONDecoder().decode(UploadCreateResponse.self, from: responseData) {
+            if let id = decoded.id, !id.isEmpty { return id }
+            if let id = decoded.uploadId, !id.isEmpty { return id }
+        }
+        
+        // Fallback: best-effort parse `{ "id": "upl_..." }`
+        if let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] {
+            if let id = json["id"] as? String { return id }
+            if let id = json["upload_id"] as? String { return id }
+        }
+        
+        throw NetworkError.invalidResponse
+    }
+    
     // Send chat message
     func sendChatMessage(
         to serverAddress: String,
         model: String,
         messages: [ChatMessage],
+        attachmentIds: [String]? = nil,
         systemPrompt: String? = nil,
         provider: String? = nil,
         safetyLevel: String? = nil,
@@ -222,10 +314,7 @@ class NetworkManager {
         reasoningEffort: String? = nil,
         conversationId: String? = nil
     ) async throws -> String {
-        var urlString = serverAddress
-        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
-            urlString = "http://\(urlString)"
-        }
+        let urlString = try normalizeServerAddress(serverAddress)
         
         guard let url = URL(string: "\(urlString)/v1/chat/completions") else {
             throw NetworkError.invalidURL
@@ -246,6 +335,7 @@ class NetworkManager {
         let chatRequest = ChatRequest(
             model: model,
             messages: allMessages,
+            attachments: attachmentIds?.map { ChatAttachment(id: $0) },
             provider: provider,
             temperature: temperature,
             stream: false,
@@ -288,6 +378,7 @@ class NetworkManager {
         to serverAddress: String,
         model: String,
         messages: [ChatMessage],
+        attachmentIds: [String]? = nil,
         systemPrompt: String? = nil,
         provider: String? = nil,
         safetyLevel: String? = nil,
@@ -297,10 +388,7 @@ class NetworkManager {
         onChunk: @escaping (String) -> Void,
         onReasoningChunk: @escaping (String) -> Void = { _ in }
     ) async throws {
-        var urlString = serverAddress
-        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
-            urlString = "http://\(urlString)"
-        }
+        let urlString = try normalizeServerAddress(serverAddress)
         
         guard let url = URL(string: "\(urlString)/v1/chat/completions") else {
             throw NetworkError.invalidURL
@@ -321,6 +409,7 @@ class NetworkManager {
         let chatRequest = ChatRequest(
             model: model,
             messages: allMessages,
+            attachments: attachmentIds?.map { ChatAttachment(id: $0) },
             provider: provider,
             temperature: temperature,
             stream: true,
